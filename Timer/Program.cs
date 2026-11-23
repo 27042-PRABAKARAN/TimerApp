@@ -16,14 +16,20 @@ namespace Timer
             IUserRepository userRepository =
                 new JsonUserRepository();
 
+            ITaskRepository taskRepository =
+                new JsonTaskRepository();
+
             AuthenticationServices authService =
                 new AuthenticationServices(userRepository);
+
+            TimerServices timerService =
+                new TimerServices(taskRepository);
 
             AuthenticationView authView =
                 new AuthenticationView(authService);
 
             TimerView timerView =
-                new TimerView();
+                new TimerView(timerService);
 
             while (true)
             {
