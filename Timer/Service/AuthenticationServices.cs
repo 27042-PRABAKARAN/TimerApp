@@ -11,8 +11,8 @@ namespace Timer.Services
     public class AuthenticationServices
     {
         private const int MinPasswordLength = 8;
-        private const int SaltSize = 16; // 128-bit salt
-        private const int KeySize = 32;  // 256-bit hash
+        private const int SaltSize = 16;
+        private const int KeySize = 32;
         private const int Iterations = 100_000;
         private static readonly HashAlgorithmName Algorithm = HashAlgorithmName.SHA256;
 

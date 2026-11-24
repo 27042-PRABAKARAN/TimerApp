@@ -1,6 +1,7 @@
 ﻿using Timer.Interfaces;
 using Timer.Models;
 using Timer.Repositories;
+using Timer.Service;
 using Timer.Services;
 using Timer.Views;
 
@@ -25,14 +26,17 @@ namespace Timer
             TimerServices timerService =
                 new TimerServices(taskRepository);
 
+            TaskHistoryServices taskHistoryService =
+                new TaskHistoryServices(taskRepository);
+
             AuthenticationView authView =
                 new AuthenticationView(authService);
 
-            LogView logView =
-                new LogView(timerService);
+            TaskHistoryView taskHistoryView =
+                new TaskHistoryView(taskHistoryService);
 
             TimerView timerView =
-                new TimerView(timerService, logView);
+                new TimerView(timerService, taskHistoryView);
 
             while (true)
             {

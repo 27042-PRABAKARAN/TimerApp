@@ -201,16 +201,6 @@ namespace Timer.Services
         }
 
         /// <summary>
-        /// Retrieves all saved task logs for the specified user.
-        /// </summary>
-        /// <param name="userId">The unique identifier of the user.</param>
-        /// <returns>A list of <see cref="TaskItem"/> records belonging to the user.</returns>
-        public List<TaskItem> GetUserTasks(Guid userId)
-        {
-            return this._taskRepository.GetByUserId(userId);
-        }
-
-        /// <summary>
         /// Adds extra time to <see cref="TaskItem.ExtendedTime"/> and re-arms the target notification if the new effective target exceeds the current elapsed time.
         /// </summary>
         /// <param name="additionalTime">The extra <see cref="TimeSpan"/> to add to the task's extended duration.</param>

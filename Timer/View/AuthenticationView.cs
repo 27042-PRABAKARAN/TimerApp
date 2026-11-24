@@ -182,8 +182,7 @@ namespace Timer.Views
                 return false;
             }
 
-            // Convert 12-hour clock to 24-hour clock
-            int hour24 = hour % 12; // 12 AM -> 0, 12 PM -> 0 (plus 12 below)
+            int hour24 = hour % 12;
             if (period == "PM")
             {
                 hour24 += 12;
@@ -213,16 +212,13 @@ namespace Timer.Views
                 }
                 else if (keyInfo.Key == ConsoleKey.Tab)
                 {
-                    // Flip the visibility state
                     isMasked = !isMasked;
 
-                    // Erase the currently displayed characters on the console
                     for (int i = 0; i < password.Length; i++)
                     {
                         Console.Write("\b \b");
                     }
 
-                    // Reprint the password in the new state
                     Console.Write(isMasked ? new string('*', password.Length) : password.ToString());
                 }
                 else if (keyInfo.Key == ConsoleKey.Backspace)

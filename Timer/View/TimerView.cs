@@ -9,7 +9,7 @@ namespace Timer.Views
     public class TimerView
     {
         private readonly TimerServices _timerService;
-        private readonly LogView _logView;
+        private readonly TaskHistoryView _logView;
         private bool _targetReachedBannerShown;
 
         /// <summary>
@@ -17,7 +17,7 @@ namespace Timer.Views
         /// </summary>
         /// <param name="timerService">The service used to manage task creation, timing, and persistence.</param>
         /// <param name="logView">The view responsible for displaying recorded task logs.</param>
-        public TimerView(TimerServices timerService, LogView logView)
+        public TimerView(TimerServices timerService, TaskHistoryView logView)
         {
             this._timerService = timerService;
             this._logView = logView;
@@ -180,15 +180,6 @@ namespace Timer.Views
             Console.WriteLine($"\n[NOTIFICATION] Target time ({this.FormatDuration(effectiveTarget)}) reached for \"{task.TaskName}\"!");
             Console.ResetColor();
             Console.WriteLine();
-
-            try
-            {
-                Console.Beep();
-            }
-            catch
-            {
-                // Ignore if system beep is unsupported on the current terminal.
-            }
         }
 
         /// <summary>
@@ -202,15 +193,6 @@ namespace Timer.Views
             Console.WriteLine($"\n[DAILY REMINDER] Good day, {user.Name}! It's {user.DayStartTime:hh:mm tt} — time to start your timer and begin work!");
             Console.ResetColor();
             Console.WriteLine();
-
-            try
-            {
-                Console.Beep();
-            }
-            catch
-            {
-                // Ignore if system beep is unsupported on the current terminal.
-            }
         }
 
         /// <summary>

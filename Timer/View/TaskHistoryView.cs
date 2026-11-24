@@ -1,39 +1,40 @@
 ﻿using Timer.Models;
-using Timer.Services;
+using Timer.Service;
 
 namespace Timer.Views
 {
     /// <summary>
-    /// Provides the console-based user interface for viewing and summarizing recorded task time logs.
+    /// Provides the console-based user interface for viewing and summarizing the most recent recorded task time logs.
     /// </summary>
-    public class LogView
+    public class TaskHistoryView
     {
-        private readonly TimerServices _timerService;
+        private const int MaxRecentLogs = 5;
+        private readonly TaskHistoryServices _taskHistoryService;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="LogView"/> class.
+        /// Initializes a new instance of the <see cref="TaskHistoryView"/> class.
         /// </summary>
-        /// <param name="timerService">The service used to retrieve user task logs.</param>
-        public LogView(TimerServices timerService)
+        /// <param name="taskHistoryService">The service used to retrieve user task logs.</param>
+        public TaskHistoryView(TaskHistoryServices taskHistoryService)
         {
-            this._timerService = timerService;
+            this._taskHistoryService = taskHistoryService;
         }
 
         /// <summary>
-        /// Displays all recorded task logs and summary totals for the specified user.
+        /// Displays the last 5 recorded task logs and summary totals for the specified user.
         /// </summary>
         /// <param name="user">The currently authenticated <see cref="User"/>.</param>
         public void ShowLogs(User user)
         {
             Console.Clear();
 
-            Console.WriteLine("==================== TIME LOGS ====================");
+            Console.WriteLine("==================== RECENT TIME LOGS (LAST 5) ====================");
             Console.WriteLine($"User: {user.Name} ({user.Email})");
             Console.WriteLine();
 
-            List<TaskItem> tasks = this._timerService.GetUserTasks(user.UserId);
+            List<TaskItem> allTasks = this._taskHistoryService.GetUserTasks(user.UserId);
 
-            if (tasks.Count == 0)
+            if (allTasks.Count == 0)
             {
                 Console.WriteLine("No task logs found yet. Start a new task from the dashboard!");
                 Console.WriteLine("\nPress any key to return to dashboard...");
@@ -41,18 +42,20 @@ namespace Timer.Views
                 return;
             }
 
+            List<TaskItem> recentTasks = allTasks.Take(MaxRecentLogs).ToList();
+
             Console.WriteLine(
                 $"{"#",-4} {"Task Name",-20} {"Start Date",-12} {"End Date",-12} {"Start",-11} {"End",-11} {"Target",-10} {"Extended",-10} {"Worked",-10} {"Total",-10}");
             Console.WriteLine(new string('-', 120));
 
-            TimeSpan totalWorked = TimeSpan.Zero;
-            TimeSpan totalSession = TimeSpan.Zero;
+            TimeSpan recentWorked = TimeSpan.Zero;
+            TimeSpan recentSession = TimeSpan.Zero;
 
-            for (int i = 0; i < tasks.Count; i++)
+            for (int i = 0; i < recentTasks.Count; i++)
             {
-                TaskItem task = tasks[i];
-                totalWorked += task.ElapsedTime;
-                totalSession += task.TotalDuration;
+                TaskItem task = recentTasks[i];
+                recentWorked += task.ElapsedTime;
+                recentSession += task.TotalDuration;
 
                 string taskName = task.TaskName.Length > 18
                     ? task.TaskName.Substring(0, 15) + "..."
@@ -75,9 +78,9 @@ namespace Timer.Views
             }
 
             Console.WriteLine(new string('-', 120));
-            Console.WriteLine($"Total Tasks Logged   : {tasks.Count}");
-            Console.WriteLine($"Total Active Worked  : {FormatDuration(totalWorked)}");
-            Console.WriteLine($"Total Session Span   : {FormatDuration(totalSession)}");
+            Console.WriteLine($"Showing              : {recentTasks.Count} of {allTasks.Count} total tasks");
+            Console.WriteLine($"Recent Active Worked : {FormatDuration(recentWorked)}");
+            Console.WriteLine($"Recent Session Span  : {FormatDuration(recentSession)}");
             Console.WriteLine("\nPress any key to return to dashboard...");
             Console.ReadKey();
         }
