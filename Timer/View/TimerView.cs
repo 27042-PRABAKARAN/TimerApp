@@ -26,109 +26,130 @@ namespace Timer.Views
         /// <param name="user">The currently authenticated <see cref="User"/>.</param>
         public void ShowDashboard(User user)
         {
-            while (true)
+            this._timerService.OnDailyWorkReminder += this.HandleDailyWorkReminder;
+            this._timerService.StartDailyReminderMonitor(user);
+
+            try
             {
-                Console.Clear();
-
-                Console.WriteLine("========== TASK TIMER DASHBOARD ==========");
-                Console.WriteLine($"Welcome, {user.Name} ({user.Email})!");
-                Console.WriteLine();
-                Console.WriteLine("1. New Task");
-                Console.WriteLine("2. Logs");
-                Console.WriteLine("3. Import");
-                Console.WriteLine("4. Export");
-                Console.WriteLine("5. Logout");
-                Console.WriteLine();
-
-                Console.Write("Enter choice: ");
-                string choice = Console.ReadLine() ?? string.Empty;
-
-                switch (choice)
+                while (true)
                 {
-                    case "1":
-                        this.CreateAndRunTask(user);
-                        break;
+                    Console.Clear();
 
-                    case "2":
-                        this.ShowLogsMock();
-                        break;
+                    Console.WriteLine("========== TASK TIMER DASHBOARD ==========");
+                    Console.WriteLine($"Welcome, {user.Name} ({user.Email})!");
+                    Console.WriteLine($"Daily Work Start Time: {user.DayStartTime:hh:mm tt}");
+                    Console.WriteLine();
+                    Console.WriteLine("1. New Task");
+                    Console.WriteLine("2. Logs");
+                    Console.WriteLine("3. Import");
+                    Console.WriteLine("4. Export");
+                    Console.WriteLine("5. Logout");
+                    Console.WriteLine();
 
-                    case "3":
-                        this.ShowImportMock();
-                        break;
+                    Console.Write("Enter choice: ");
+                    string choice = Console.ReadLine() ?? string.Empty;
 
-                    case "4":
-                        this.ShowExportMock();
-                        break;
+                    switch (choice)
+                    {
+                        case "1":
+                            this.CreateAndRunTask(user);
+                            break;
 
-                    case "5":
-                        return;
+                        case "2":
+                            this.ShowLogsMock();
+                            break;
 
-                    default:
-                        Console.WriteLine("Invalid choice.");
-                        Console.ReadKey();
-                        break;
+                        case "3":
+                            this.ShowImportMock();
+                            break;
+
+                        case "4":
+                            this.ShowExportMock();
+                            break;
+
+                        case "5":
+                            return;
+
+                        default:
+                            Console.WriteLine("Invalid choice.");
+                            Console.ReadKey();
+                            break;
+                    }
                 }
+            }
+            finally
+            {
+                this._timerService.StopDailyReminderMonitor();
+                this._timerService.OnDailyWorkReminder -= this.HandleDailyWorkReminder;
             }
         }
 
         /// <summary>
-        /// Prompts the user for task details and target duration (hours, minutes, and seconds), then starts the live task timer.
+        /// Prompts the user for task details and target duration (hours, minutes, and seconds), runs the live timer, and repeats if the user chooses to start another task.
         /// </summary>
         /// <param name="user">The <see cref="User"/> creating the task.</param>
         private void CreateAndRunTask(User user)
         {
-            Console.Clear();
-
-            Console.WriteLine("========== NEW TASK ==========");
-            Console.Write("Enter task name: ");
-            string taskName = Console.ReadLine() ?? string.Empty;
-
-            if (string.IsNullOrWhiteSpace(taskName))
+            while (true)
             {
-                Console.WriteLine("\nTask name cannot be empty.");
-                Console.ReadKey();
-                return;
-            }
+                Console.Clear();
 
-            Console.WriteLine("\nEnter target duration (press Enter for 0):");
+                Console.WriteLine("========== NEW TASK ==========");
+                Console.Write("Enter task name: ");
+                string taskName = Console.ReadLine() ?? string.Empty;
 
-            if (!this.TryReadDurationUnit("  Hours   : ", out int hours) ||
-                !this.TryReadDurationUnit("  Minutes : ", out int minutes) ||
-                !this.TryReadDurationUnit("  Seconds : ", out int seconds))
-            {
-                Console.WriteLine("\nInvalid duration. Please enter a non-negative whole number.");
-                Console.ReadKey();
-                return;
-            }
+                if (string.IsNullOrWhiteSpace(taskName))
+                {
+                    Console.WriteLine("\nTask name cannot be empty.");
+                    Console.ReadKey();
+                    return;
+                }
 
-            TimeSpan targetTime = new TimeSpan(hours, minutes, seconds);
+                Console.WriteLine("\nEnter target duration (press Enter for 0):");
 
-            Console.WriteLine($"\nTarget Duration Set: {this.FormatDuration(targetTime)}");
-            Console.WriteLine("Press ENTER to start the timer, or any other key to cancel...");
+                if (!this.TryReadDurationUnit("  Hours   : ", out int hours) ||
+                    !this.TryReadDurationUnit("  Minutes : ", out int minutes) ||
+                    !this.TryReadDurationUnit("  Seconds : ", out int seconds))
+                {
+                    Console.WriteLine("\nInvalid duration. Please enter a non-negative whole number.");
+                    Console.ReadKey();
+                    return;
+                }
 
-            if (Console.ReadKey(true).Key != ConsoleKey.Enter)
-            {
-                Console.WriteLine("\nTask cancelled.");
-                Console.ReadKey();
-                return;
-            }
+                TimeSpan targetTime = new TimeSpan(hours, minutes, seconds);
 
-            this._targetReachedBannerShown = false;
-            this._timerService.OnTargetTimeReached += this.HandleTargetTimeReached;
+                Console.WriteLine($"\nTarget Duration Set: {FormatDuration(targetTime)}");
+                Console.WriteLine("Press ENTER to start the timer, or any other key to cancel...");
 
-            try
-            {
-                TaskItem activeTask = this._timerService.StartNewTask(
-                    user.UserId,
-                    taskName,
-                    targetTime);
+                if (Console.ReadKey(true).Key != ConsoleKey.Enter)
+                {
+                    Console.WriteLine("\nTask cancelled.");
+                    Console.ReadKey();
+                    return;
+                }
 
-                this.RunLiveTimer(activeTask);
-            }
-            finally
-            {
-                this._timerService.OnTargetTimeReached -= this.HandleTargetTimeReached;
+                this._targetReachedBannerShown = false;
+                this._timerService.OnTargetTimeReached += this.HandleTargetTimeReached;
+
+                bool startNextTask;
+                try
+                {
+                    TaskItem activeTask = this._timerService.StartNewTask(
+                        user.UserId,
+                        taskName,
+                        targetTime);
+
+                    startNextTask = this.RunLiveTimer(activeTask);
+                }
+                finally
+                {
+                    this._timerService.OnTargetTimeReached -= this.HandleTargetTimeReached;
+                }
+
+                if (!startNextTask)
+                {
+                    return;
+                }
             }
         }
 
@@ -163,7 +184,29 @@ namespace Timer.Views
 
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"\n[NOTIFICATION] Target time ({this.FormatDuration(effectiveTarget)}) reached for \"{task.TaskName}\"!");
+            Console.WriteLine($"\n[NOTIFICATION] Target time ({FormatDuration(effectiveTarget)}) reached for \"{task.TaskName}\"!");
+            Console.ResetColor();
+            Console.WriteLine();
+
+            try
+            {
+                Console.Beep();
+            }
+            catch
+            {
+                // Ignore if system beep is unsupported on the current terminal.
+            }
+        }
+
+        /// <summary>
+        /// Handles the <see cref="TimerServices.OnDailyWorkReminder"/> event by playing a console alert and reminding the user to start working.
+        /// </summary>
+        /// <param name="user">The <see cref="User"/> whose daily start time has arrived.</param>
+        private void HandleDailyWorkReminder(User user)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"\n[DAILY REMINDER] Good day, {user.Name}! It's {user.DayStartTime:hh:mm tt} — time to start your timer and begin work!");
             Console.ResetColor();
             Console.WriteLine();
 
@@ -181,7 +224,8 @@ namespace Timer.Views
         /// Displays a live stopwatch screen supporting pause, resume, target extension, and stop-and-save controls.
         /// </summary>
         /// <param name="task">The active <see cref="TaskItem"/> being timed.</param>
-        private void RunLiveTimer(TaskItem task)
+        /// <returns><see langword="true"/> if the user chooses to start another task; <see langword="false"/> to return to the dashboard.</returns>
+        private bool RunLiveTimer(TaskItem task)
         {
             this.RenderTimerHeader(task);
 
@@ -193,7 +237,7 @@ namespace Timer.Views
                     string status = this._timerService.IsRunning ? "RUNNING" : "PAUSED ";
                     string targetFlag = this._targetReachedBannerShown ? " [TARGET REACHED]" : string.Empty;
 
-                    Console.Write($"\r[{status}] Elapsed: {this.FormatDuration(elapsed)}{targetFlag}   ");
+                    Console.Write($"\r[{status}] Elapsed: {FormatDuration(elapsed)}{targetFlag}   ");
                     Thread.Sleep(200);
                 }
 
@@ -225,18 +269,39 @@ namespace Timer.Views
 
                     if (completedTask != null)
                     {
-                        Console.WriteLine($"Task       : {completedTask.TaskName}");
-                        Console.WriteLine($"Start Date : {completedTask.StartDate}");
-                        Console.WriteLine($"Start Time : {completedTask.StartTime:hh:mm:ss tt}");
-                        Console.WriteLine($"End Time   : {completedTask.EndTime:hh:mm:ss tt}");
-                        Console.WriteLine($"Target     : {this.FormatDuration(completedTask.TargetTime)}");
-                        Console.WriteLine($"Extended   : +{this.FormatDuration(completedTask.ExtendedTime)}");
-                        Console.WriteLine($"Duration   : {this.FormatDuration(completedTask.TotalDuration)}");
+                        Console.WriteLine($"Task           : {completedTask.TaskName}");
+                        Console.WriteLine($"Start Date     : {completedTask.StartDate}");
+                        Console.WriteLine($"End Date       : {completedTask.EndDate}");
+                        Console.WriteLine($"Start Time     : {completedTask.StartTime:hh:mm:ss tt}");
+                        Console.WriteLine($"End Time       : {completedTask.EndTime:hh:mm:ss tt}");
+                        Console.WriteLine($"Target         : {FormatDuration(completedTask.TargetTime)}");
+                        Console.WriteLine($"Extended       : +{FormatDuration(completedTask.ExtendedTime)}");
+                        Console.WriteLine($"Elapsed Worked : {FormatDuration(completedTask.ElapsedTime)}");
+                        Console.WriteLine($"Total Duration : {FormatDuration(completedTask.TotalDuration)}");
                     }
 
-                    Console.WriteLine("\nPress any key to return to dashboard...");
-                    Console.ReadKey();
-                    return;
+                    Console.WriteLine();
+                    Console.WriteLine("1. Start Next Task");
+                    Console.WriteLine("2. Back to Dashboard");
+                    Console.WriteLine();
+
+                    while (true)
+                    {
+                        Console.Write("Enter choice: ");
+                        string nextChoice = Console.ReadLine() ?? string.Empty;
+
+                        if (nextChoice == "1")
+                        {
+                            return true;
+                        }
+
+                        if (nextChoice == "2")
+                        {
+                            return false;
+                        }
+
+                        Console.WriteLine("Invalid choice. Please enter 1 or 2.");
+                    }
                 }
             }
         }
@@ -253,8 +318,8 @@ namespace Timer.Views
             Console.WriteLine($"Task       : {task.TaskName}");
             Console.WriteLine($"Start Date : {task.StartDate}");
             Console.WriteLine($"Start Time : {task.StartTime:hh:mm:ss tt}");
-            Console.WriteLine($"Target     : {this.FormatDuration(task.TargetTime)}");
-            Console.WriteLine($"Extended   : +{this.FormatDuration(task.ExtendedTime)} (Total Target: {this.FormatDuration(task.TargetTime + task.ExtendedTime)})");
+            Console.WriteLine($"Target     : {FormatDuration(task.TargetTime)}");
+            Console.WriteLine($"Extended   : +{FormatDuration(task.ExtendedTime)} (Total Target: {FormatDuration(task.TargetTime + task.ExtendedTime)})");
             Console.WriteLine();
             Console.WriteLine("[P] Pause/Resume   [E] Extend Target   [S] Stop & Save");
             Console.WriteLine();
@@ -289,7 +354,7 @@ namespace Timer.Views
                         this._targetReachedBannerShown = false;
                     }
 
-                    Console.WriteLine($"\nExtended by {this.FormatDuration(extension)}. Total Extended: +{this.FormatDuration(task.ExtendedTime)} | New Target: {this.FormatDuration(effectiveTarget)}");
+                    Console.WriteLine($"\nExtended by {FormatDuration(extension)}. Total Extended: +{FormatDuration(task.ExtendedTime)} | New Target: {FormatDuration(effectiveTarget)}");
                 }
                 else
                 {

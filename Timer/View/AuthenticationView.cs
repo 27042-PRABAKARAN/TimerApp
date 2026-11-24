@@ -67,10 +67,6 @@ namespace Timer.Views
             }
         }
 
-        /// <summary>
-        /// Prompts the user for email and password credentials and attempts to authenticate them.
-        /// </summary>
-        /// <returns>The authenticated <see cref="User"/> if valid; otherwise, <see langword="null"/>.</returns>
         private User? Login()
         {
             Console.Clear();
@@ -80,7 +76,7 @@ namespace Timer.Views
             Console.Write("Email: ");
             string email = Console.ReadLine() ?? string.Empty;
 
-            Console.Write("Password: ");
+            Console.Write("Password (Press Tab to show/hide): ");
             string password = this.ReadMaskedPassword();
 
             User? user = this._authService.Login(email, password);
@@ -107,6 +103,7 @@ namespace Timer.Views
 
             Console.WriteLine("========== SIGN UP ==========");
             Console.WriteLine("Password rules: 8+ chars, uppercase, lowercase, number, and symbol (no spaces).");
+            Console.WriteLine("Tip: Press [Tab] while typing a password to show or hide it.");
             Console.WriteLine();
 
             Console.Write("Name: ");
@@ -116,12 +113,34 @@ namespace Timer.Views
             string email = Console.ReadLine() ?? string.Empty;
 
             Console.Write("Password: ");
-            string password = Console.ReadLine() ?? string.Empty;
+            string password = this.ReadMaskedPassword();
+
+            Console.Write("Confirm Password: ");
+            string confirmPassword = this.ReadMaskedPassword();
+
+            // Check if passwords match before moving forward
+            if (password != confirmPassword)
+            {
+                Console.WriteLine("\nPasswords do not match. Please try again.");
+                Console.WriteLine("Press any key to continue...");
+                Console.ReadKey();
+                return;
+            }
+
+            Console.WriteLine("\nDaily Work Start Time:");
+            if (!this.TryReadStartTime(out TimeOnly dayStartTime))
+            {
+                Console.WriteLine("\nInvalid time entered. Please use Hour (1-12), Minute (0-59), and AM/PM.");
+                Console.WriteLine("Press any key to continue...");
+                Console.ReadKey();
+                return;
+            }
 
             bool success = this._authService.SignUp(
                 name,
                 email,
                 password,
+                dayStartTime,
                 out string message);
 
             Console.WriteLine("\n" + message);
@@ -130,13 +149,58 @@ namespace Timer.Views
             Console.ReadKey();
         }
 
+
         /// <summary>
-        /// Reads password input from the console while displaying asterisks (<c>*</c>) instead of plain-text characters.
+        /// Prompts the user for 12-hour clock components (hour, minute, and AM/PM) and converts them into a <see cref="TimeOnly"/> value.
+        /// </summary>
+        /// <param name="startTime">When this method returns, contains the parsed <see cref="TimeOnly"/> value if valid.</param>
+        /// <returns><see langword="true"/> if all inputs are valid; otherwise, <see langword="false"/>.</returns>
+        private bool TryReadStartTime(out TimeOnly startTime)
+        {
+            startTime = default;
+
+            Console.Write("  Hour (1-12)   : ");
+            if (!int.TryParse(Console.ReadLine(), out int hour) || hour < 1 || hour > 12)
+            {
+                return false;
+            }
+
+            Console.Write("  Minute (0-59) : ");
+            string minuteInput = Console.ReadLine() ?? string.Empty;
+            int minute = 0;
+            if (!string.IsNullOrWhiteSpace(minuteInput) &&
+                (!int.TryParse(minuteInput, out minute) || minute < 0 || minute > 59))
+            {
+                return false;
+            }
+
+            Console.Write("  AM or PM      : ");
+            string period = (Console.ReadLine() ?? string.Empty).Trim().ToUpperInvariant();
+
+            if (period != "AM" && period != "PM")
+            {
+                return false;
+            }
+
+            // Convert 12-hour clock to 24-hour clock
+            int hour24 = hour % 12; // 12 AM -> 0, 12 PM -> 0 (plus 12 below)
+            if (period == "PM")
+            {
+                hour24 += 12;
+            }
+
+            startTime = new TimeOnly(hour24, minute);
+            return true;
+        }
+
+        /// <summary>
+        /// Reads password input from the console, allowing the user to toggle visibility using the Tab key.
         /// </summary>
         /// <returns>The plain-text password entered by the user.</returns>
         private string ReadMaskedPassword()
         {
             StringBuilder password = new StringBuilder();
+            bool isMasked = true;
 
             while (true)
             {
@@ -147,8 +211,21 @@ namespace Timer.Views
                     Console.WriteLine();
                     break;
                 }
+                else if (keyInfo.Key == ConsoleKey.Tab)
+                {
+                    // Flip the visibility state
+                    isMasked = !isMasked;
 
-                if (keyInfo.Key == ConsoleKey.Backspace)
+                    // Erase the currently displayed characters on the console
+                    for (int i = 0; i < password.Length; i++)
+                    {
+                        Console.Write("\b \b");
+                    }
+
+                    // Reprint the password in the new state
+                    Console.Write(isMasked ? new string('*', password.Length) : password.ToString());
+                }
+                else if (keyInfo.Key == ConsoleKey.Backspace)
                 {
                     if (password.Length > 0)
                     {
@@ -159,7 +236,7 @@ namespace Timer.Views
                 else if (!char.IsControl(keyInfo.KeyChar))
                 {
                     password.Append(keyInfo.KeyChar);
-                    Console.Write("*");
+                    Console.Write(isMasked ? '*' : keyInfo.KeyChar);
                 }
             }
 

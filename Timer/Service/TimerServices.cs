@@ -11,7 +11,13 @@ namespace Timer.Services
     public delegate void TargetTimeReachedHandler(TaskItem task);
 
     /// <summary>
-    /// Manages task creation, stopwatch timing operations, target notifications, and persistence of completed tasks.
+    /// Represents the method that handles the daily work start reminder notification.
+    /// </summary>
+    /// <param name="user">The <see cref="User"/> whose daily work start time has arrived.</param>
+    public delegate void DailyWorkReminderHandler(User user);
+
+    /// <summary>
+    /// Manages task creation, stopwatch timing operations, target and daily notifications, and persistence of completed tasks.
     /// </summary>
     public class TimerServices
     {
@@ -19,6 +25,10 @@ namespace Timer.Services
         private readonly Stopwatch _stopwatch;
         private TaskItem? _activeTask;
         private bool _targetNotified;
+
+        private System.Timers.Timer? _dailyReminderTimer;
+        private User? _monitoredUser;
+        private DateOnly? _lastDailyNotificationDate;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TimerServices"/> class.
@@ -36,6 +46,11 @@ namespace Timer.Services
         public event TargetTimeReachedHandler? OnTargetTimeReached;
 
         /// <summary>
+        /// Occurs once per day when the system clock reaches the logged-in user's <see cref="User.DayStartTime"/>.
+        /// </summary>
+        public event DailyWorkReminderHandler? OnDailyWorkReminder;
+
+        /// <summary>
         /// Gets a value indicating whether the stopwatch is currently running.
         /// </summary>
         /// <value><see langword="true"/> if the timer is running; otherwise, <see langword="false"/>.</value>
@@ -46,6 +61,38 @@ namespace Timer.Services
         /// </summary>
         /// <value>The active <see cref="TaskItem"/> instance, if any.</value>
         public TaskItem? ActiveTask => this._activeTask;
+
+        /// <summary>
+        /// Starts monitoring the system clock for the specified user's daily work start time.
+        /// </summary>
+        /// <param name="user">The logged-in <see cref="User"/> to notify.</param>
+        public void StartDailyReminderMonitor(User user)
+        {
+            this.StopDailyReminderMonitor();
+
+            this._monitoredUser = user;
+            this._lastDailyNotificationDate = null;
+
+            this._dailyReminderTimer = new System.Timers.Timer(1000);
+            this._dailyReminderTimer.Elapsed += (sender, e) => this.CheckDailyWorkStartTime();
+            this._dailyReminderTimer.AutoReset = true;
+            this._dailyReminderTimer.Start();
+        }
+
+        /// <summary>
+        /// Stops monitoring for the daily work start time and releases timer resources.
+        /// </summary>
+        public void StopDailyReminderMonitor()
+        {
+            if (this._dailyReminderTimer != null)
+            {
+                this._dailyReminderTimer.Stop();
+                this._dailyReminderTimer.Dispose();
+                this._dailyReminderTimer = null;
+            }
+
+            this._monitoredUser = null;
+        }
 
         /// <summary>
         /// Creates a new task and immediately starts the stopwatch, recording <see cref="TaskItem.StartDate"/> and <see cref="TaskItem.StartTime"/>.
@@ -64,10 +111,12 @@ namespace Timer.Services
                 UserId = userId,
                 TaskName = taskName.Trim(),
                 StartDate = DateOnly.FromDateTime(now),
+                EndDate = null,
                 StartTime = now,
                 EndTime = null,
                 TargetTime = targetTime,
                 ExtendedTime = TimeSpan.Zero,
+                ElapsedTime = TimeSpan.Zero,
                 TotalDuration = TimeSpan.Zero,
             };
 
@@ -123,7 +172,7 @@ namespace Timer.Services
         }
 
         /// <summary>
-        /// Stops the stopwatch, sets <see cref="TaskItem.EndTime"/> and <see cref="TaskItem.TotalDuration"/>, saves the task to the repository, and clears the active task.
+        /// Stops the stopwatch, sets <see cref="TaskItem.EndDate"/>, <see cref="TaskItem.EndTime"/>, <see cref="TaskItem.ElapsedTime"/>, and <see cref="TaskItem.TotalDuration"/>, saves the task, and clears the active task.
         /// </summary>
         /// <returns>The completed and saved <see cref="TaskItem"/>, or <see langword="null"/> if no task was active.</returns>
         public TaskItem? StopAndSaveTask()
@@ -135,8 +184,11 @@ namespace Timer.Services
 
             this._stopwatch.Stop();
 
-            this._activeTask.EndTime = DateTime.Now;
-            this._activeTask.TotalDuration = this._stopwatch.Elapsed;
+            DateTime endNow = DateTime.Now;
+            this._activeTask.EndDate = DateOnly.FromDateTime(endNow);
+            this._activeTask.EndTime = endNow;
+            this._activeTask.ElapsedTime = this._stopwatch.Elapsed;
+            this._activeTask.TotalDuration = endNow - this._activeTask.StartTime;
 
             this._taskRepository.Add(this._activeTask);
 
@@ -179,6 +231,29 @@ namespace Timer.Services
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Checks whether the current time matches the monitored user's <see cref="User.DayStartTime"/> and invokes <see cref="OnDailyWorkReminder"/> once per day.
+        /// </summary>
+        private void CheckDailyWorkStartTime()
+        {
+            if (this._monitoredUser == null)
+            {
+                return;
+            }
+
+            DateTime now = DateTime.Now;
+            DateOnly today = DateOnly.FromDateTime(now);
+            TimeOnly currentTime = TimeOnly.FromDateTime(now);
+
+            if (this._lastDailyNotificationDate != today &&
+                currentTime.Hour == this._monitoredUser.DayStartTime.Hour &&
+                currentTime.Minute == this._monitoredUser.DayStartTime.Minute)
+            {
+                this._lastDailyNotificationDate = today;
+                this.OnDailyWorkReminder?.Invoke(this._monitoredUser);
+            }
         }
     }
 }

@@ -28,5 +28,11 @@
         /// </summary>
         /// <value>A <see cref="string"/> representing the password. Defaults to <see cref="string.Empty"/>.</value>
         public string Password { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the user's preferred daily work start time for receiving reminder notifications.
+        /// </summary>
+        /// <value>A <see cref="TimeOnly"/> representing the daily start time. Defaults to <c>09:00:00</c>.</value>
+        public TimeOnly DayStartTime { get; set; } = new TimeOnly(9, 0);
     }
 }

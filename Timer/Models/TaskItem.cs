@@ -32,6 +32,12 @@ namespace Timer.Models
         public DateOnly StartDate { get; set; }
 
         /// <summary>
+        /// Gets or sets the calendar date when the task ended.
+        /// </summary>
+        /// <value>A nullable <see cref="DateOnly"/> representing the end date of the task, or <see langword="null"/> if still in progress.</value>
+        public DateOnly? EndDate { get; set; }
+
+        /// <summary>
         /// Gets or sets the timestamp when the task started.
         /// </summary>
         /// <value>A <see cref="DateTime"/> representing when timing began.</value>
@@ -56,9 +62,15 @@ namespace Timer.Models
         public TimeSpan ExtendedTime { get; set; } = TimeSpan.Zero;
 
         /// <summary>
-        /// Gets or sets the actual total time spent on the task.
+        /// Gets or sets the actual active time worked on the task (excluding paused intervals).
         /// </summary>
-        /// <value>A <see cref="TimeSpan"/> representing the recorded duration.</value>
+        /// <value>A <see cref="TimeSpan"/> representing the active elapsed work time.</value>
+        public TimeSpan ElapsedTime { get; set; }
+
+        /// <summary>
+        /// Gets or sets the overall wall-clock duration from <see cref="StartTime"/> to <see cref="EndTime"/>.
+        /// </summary>
+        /// <value>A <see cref="TimeSpan"/> representing the total session duration.</value>
         public TimeSpan TotalDuration { get; set; }
     }
 }

@@ -28,14 +28,15 @@ namespace Timer.Services
         }
 
         /// <summary>
-        /// Validates registration details and registers a new user account with a salted password hash.
+        /// Validates registration details and registers a new user account with a salted password hash and daily start time.
         /// </summary>
         /// <param name="name">The display name of the new user.</param>
         /// <param name="email">The desired email address for the new account.</param>
         /// <param name="password">The plain-text password for the new account.</param>
+        /// <param name="dayStartTime">The user's preferred daily work start time.</param>
         /// <param name="message">When this method returns, contains a status or validation error message.</param>
         /// <returns><see langword="true"/> if registration succeeds; otherwise, <see langword="false"/>.</returns>
-        public bool SignUp(string name, string email, string password, out string message)
+        public bool SignUp(string name, string email, string password, TimeOnly dayStartTime, out string message)
         {
             name = name.Trim();
             email = email.Trim();
@@ -69,6 +70,7 @@ namespace Timer.Services
                 Name = name,
                 Email = email,
                 Password = HashPassword(password),
+                DayStartTime = dayStartTime,
             };
 
             this._userRepository.Add(user);
