@@ -25,6 +25,7 @@ namespace Timer.Services
         private readonly Stopwatch _stopwatch;
         private TaskItem? _activeTask;
         private bool _targetNotified;
+        private TimeSpan _previouslyAccumulatedTime;
 
         private System.Timers.Timer? _dailyReminderTimer;
         private User? _monitoredUser;
@@ -100,7 +101,7 @@ namespace Timer.Services
         /// <param name="userId">The unique identifier of the user starting the task.</param>
         /// <param name="taskName">The name or title of the task.</param>
         /// <param name="targetTime">The initial planned target duration for the task.</param>
-        /// <returns>The newly created and active <see cref="TaskItem"/>.</returns>
+        /// <returns>The newly created and active <see cref="TaskItem"/> instance.</returns>
         public TaskItem StartNewTask(Guid userId, string taskName, TimeSpan targetTime)
         {
             DateTime now = DateTime.Now;
@@ -120,9 +121,25 @@ namespace Timer.Services
                 TotalDuration = TimeSpan.Zero,
             };
 
+            this._previouslyAccumulatedTime = TimeSpan.Zero;
             this._targetNotified = false;
             this._stopwatch.Restart();
             return this._activeTask;
+        }
+
+        /// <summary>
+        /// Loads a previously saved historical task context and restarts the stopwatch tracking engine.
+        /// </summary>
+        /// <param name="task">The historical <see cref="TaskItem"/> record to resume tracking for.</param>
+        public void ResumeExistingTask(TaskItem task)
+        {
+            this._activeTask = task;
+            this._activeTask.EndDate = null;
+            this._activeTask.EndTime = null;
+
+            this._previouslyAccumulatedTime = task.ElapsedTime;
+            this._targetNotified = false;
+            this._stopwatch.Restart();
         }
 
         /// <summary>
@@ -153,7 +170,7 @@ namespace Timer.Services
         /// <returns>A <see cref="TimeSpan"/> representing the current elapsed time.</returns>
         public TimeSpan GetElapsedTime()
         {
-            TimeSpan elapsed = this._stopwatch.Elapsed;
+            TimeSpan totalElapsed = this._previouslyAccumulatedTime + this._stopwatch.Elapsed;
 
             if (this._activeTask != null)
             {
@@ -161,14 +178,14 @@ namespace Timer.Services
 
                 if (!this._targetNotified
                     && effectiveTarget > TimeSpan.Zero
-                    && elapsed >= effectiveTarget)
+                    && totalElapsed >= effectiveTarget)
                 {
                     this._targetNotified = true;
                     this.OnTargetTimeReached?.Invoke(this._activeTask);
                 }
             }
 
-            return elapsed;
+            return totalElapsed;
         }
 
         /// <summary>
@@ -187,13 +204,14 @@ namespace Timer.Services
             DateTime endNow = DateTime.Now;
             this._activeTask.EndDate = DateOnly.FromDateTime(endNow);
             this._activeTask.EndTime = endNow;
-            this._activeTask.ElapsedTime = this._stopwatch.Elapsed;
+            this._activeTask.ElapsedTime = this._previouslyAccumulatedTime + this._stopwatch.Elapsed;
             this._activeTask.TotalDuration = endNow - this._activeTask.StartTime;
 
             this._taskRepository.Add(this._activeTask);
 
             TaskItem completedTask = this._activeTask;
             this._activeTask = null;
+            this._previouslyAccumulatedTime = TimeSpan.Zero;
             this._targetNotified = false;
             this._stopwatch.Reset();
 
@@ -214,8 +232,10 @@ namespace Timer.Services
 
             this._activeTask.ExtendedTime += additionalTime;
 
+            TimeSpan totalElapsed = this._previouslyAccumulatedTime + this._stopwatch.Elapsed;
             TimeSpan effectiveTarget = this._activeTask.TargetTime + this._activeTask.ExtendedTime;
-            if (this._stopwatch.Elapsed < effectiveTarget)
+
+            if (totalElapsed < effectiveTarget)
             {
                 this._targetNotified = false;
             }

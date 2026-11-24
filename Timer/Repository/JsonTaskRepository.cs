@@ -40,12 +40,21 @@ namespace Timer.Repositories
         }
 
         /// <summary>
-        /// Adds a new task item to the in-memory collection and persists the changes to the JSON file.
+        /// Adds a new task item or updates it if it already exists (upsert logic for resumed tasks), then persists changes.
         /// </summary>
-        /// <param name="task">The <see cref="TaskItem"/> to add.</param>
+        /// <param name="task">The <see cref="TaskItem"/> to add or update.</param>
         public void Add(TaskItem task)
         {
-            this._tasks.Add(task);
+            int index = this._tasks.FindIndex(t => t.TaskId == task.TaskId);
+            if (index >= 0)
+            {
+                this._tasks[index] = task;
+            }
+            else
+            {
+                this._tasks.Add(task);
+            }
+
             this.Save();
         }
 
@@ -60,6 +69,52 @@ namespace Timer.Repositories
                 .Where(t => t.UserId == userId)
                 .OrderByDescending(t => t.StartTime)
                 .ToList();
+        }
+
+        /// <summary>
+        /// Retrieves a specific task item by its unique identifier.
+        /// </summary>
+        /// <param name="taskId">The unique identifier of the task.</param>
+        /// <returns>The matching <see cref="TaskItem"/>, or <see langword="null"/> if not found.</returns>
+        public TaskItem? GetById(Guid taskId)
+        {
+            return this._tasks.FirstOrDefault(t => t.TaskId == taskId);
+        }
+
+        /// <summary>
+        /// Updates an existing task item's details in the in-memory list and writes changes to the JSON file.
+        /// </summary>
+        /// <param name="task">The modified <see cref="TaskItem"/> entity.</param>
+        /// <returns><see langword="true"/> if the update succeeded; otherwise, <see langword="false"/>.</returns>
+        public bool Update(TaskItem task)
+        {
+            int index = this._tasks.FindIndex(t => t.TaskId == task.TaskId);
+            if (index == -1)
+            {
+                return false;
+            }
+
+            this._tasks[index] = task;
+            this.Save();
+            return true;
+        }
+
+        /// <summary>
+        /// Permanently removes a task item from the JSON file by its unique identifier.
+        /// </summary>
+        /// <param name="taskId">The unique identifier of the task to delete.</param>
+        /// <returns><see langword="true"/> if the task was found and deleted; otherwise, <see langword="false"/>.</returns>
+        public bool Delete(Guid taskId)
+        {
+            int index = this._tasks.FindIndex(t => t.TaskId == taskId);
+            if (index == -1)
+            {
+                return false;
+            }
+
+            this._tasks.RemoveAt(index);
+            this.Save();
+            return true;
         }
 
         /// <summary>

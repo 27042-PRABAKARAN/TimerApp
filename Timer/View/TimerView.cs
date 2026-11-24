@@ -44,7 +44,8 @@ namespace Timer.Views
                     Console.WriteLine();
                     Console.WriteLine("1. New Task");
                     Console.WriteLine("2. History");
-                    Console.WriteLine("3. Logout");
+                    Console.WriteLine("3. Export Data");
+                    Console.WriteLine("4. Logout");
                     Console.WriteLine();
 
                     Console.Write("Enter choice: ");
@@ -58,9 +59,26 @@ namespace Timer.Views
 
                         case "2":
                             this._logView.ShowLogs(user);
+
+                            // Check if a task was loaded into the engine from the History View resume selection
+                            if (this._timerService.ActiveTask != null)
+                            {
+                                bool startNextImmediately = this.ExecuteTimerWorkflow(this._timerService.ActiveTask);
+
+                                if (startNextImmediately)
+                                {
+                                    this.CreateAndRunTask(user);
+                                }
+                            }
+
                             break;
 
                         case "3":
+                            // Route directly to your new custom file generation interface layout
+                            this._logView.TriggerHistoryExport(user);
+                            break;
+
+                        case "4":
                             return;
 
                         default:
@@ -78,7 +96,7 @@ namespace Timer.Views
         }
 
         /// <summary>
-        /// Prompts the user for task details and target duration (hours, minutes, and seconds), runs the live timer, and repeats if the user chooses to start another task.
+        /// Prompts the user for task details and target duration (hours, minutes, and seconds) and setups execution context.
         /// </summary>
         /// <param name="user">The <see cref="User"/> creating the task.</param>
         private void CreateAndRunTask(User user)
@@ -121,28 +139,34 @@ namespace Timer.Views
                     return;
                 }
 
-                this._targetReachedBannerShown = false;
-                this._timerService.OnTargetTimeReached += this.HandleTargetTimeReached;
+                // Initialize a clean state item and push straight into the shared timer engine loop
+                TaskItem activeTask = this._timerService.StartNewTask(user.UserId, taskName, targetTime);
+                bool loopNextTask = this.ExecuteTimerWorkflow(activeTask);
 
-                bool startNextTask;
-                try
-                {
-                    TaskItem activeTask = this._timerService.StartNewTask(
-                        user.UserId,
-                        taskName,
-                        targetTime);
-
-                    startNextTask = this.RunLiveTimer(activeTask);
-                }
-                finally
-                {
-                    this._timerService.OnTargetTimeReached -= this.HandleTargetTimeReached;
-                }
-
-                if (!startNextTask)
+                if (!loopNextTask)
                 {
                     return;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Attaches necessary event notifications, boots your active UI tracking environment loop, and detaches when finished.
+        /// </summary>
+        /// <param name="task">The <see cref="TaskItem"/> to be monitored live on screen.</param>
+        /// <returns><see langword="true"/> if the caller should continue running the task creation workflow loop; otherwise, <see langword="false"/>.</returns>
+        private bool ExecuteTimerWorkflow(TaskItem task)
+        {
+            this._targetReachedBannerShown = false;
+            this._timerService.OnTargetTimeReached += this.HandleTargetTimeReached;
+
+            try
+            {
+                return this.RunLiveTimer(task);
+            }
+            finally
+            {
+                this._timerService.OnTargetTimeReached -= this.HandleTargetTimeReached;
             }
         }
 
@@ -165,43 +189,14 @@ namespace Timer.Views
 
             return int.TryParse(input, out value) && value >= 0;
         }
-
         /// <summary>
-        /// Handles the <see cref="TimerServices.OnTargetTimeReached"/> event by playing a console alert and displaying a notification banner.
+        /// Runs the interactive live-updating loop on the terminal screen, parsing tracking commands until the session stops.
         /// </summary>
-        /// <param name="task">The <see cref="TaskItem"/> whose effective target duration was reached.</param>
-        private void HandleTargetTimeReached(TaskItem task)
-        {
-            this._targetReachedBannerShown = true;
-            TimeSpan effectiveTarget = task.TargetTime + task.ExtendedTime;
-
-            Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"\n[NOTIFICATION] Target time ({this.FormatDuration(effectiveTarget)}) reached for \"{task.TaskName}\"!");
-            Console.ResetColor();
-            Console.WriteLine();
-        }
-
-        /// <summary>
-        /// Handles the <see cref="TimerServices.OnDailyWorkReminder"/> event by playing a console alert and reminding the user to start working.
-        /// </summary>
-        /// <param name="user">The <see cref="User"/> whose daily start time has arrived.</param>
-        private void HandleDailyWorkReminder(User user)
-        {
-            Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"\n[DAILY REMINDER] Good day, {user.Name}! It's {user.DayStartTime:hh:mm tt} — time to start your timer and begin work!");
-            Console.ResetColor();
-            Console.WriteLine();
-        }
-
-        /// <summary>
-        /// Displays a live stopwatch screen supporting pause, resume, target extension, and stop-and-save controls.
-        /// </summary>
-        /// <param name="task">The active <see cref="TaskItem"/> being timed.</param>
-        /// <returns><see langword="true"/> if the user chooses to start another task; <see langword="false"/> to return to the dashboard.</returns>
+        /// <param name="task">The active tracking context to map to the user interface.</param>
+        /// <returns><see langword="true"/> if the caller should continue running the task creation loop; otherwise, <see langword="false"/>.</returns>
         private bool RunLiveTimer(TaskItem task)
         {
+            // Initialise the display header card when the window launches
             this.RenderTimerHeader(task);
 
             while (true)
@@ -348,6 +343,35 @@ namespace Timer.Views
             {
                 this._timerService.Resume();
             }
+        }
+
+        /// <summary>
+        /// Handles the <see cref="TimerServices.OnTargetTimeReached"/> event by playing a console alert and displaying a notification banner.
+        /// </summary>
+        /// <param name="task">The <see cref="TaskItem"/> whose effective target duration was reached.</param>
+        private void HandleTargetTimeReached(TaskItem task)
+        {
+            this._targetReachedBannerShown = true;
+            TimeSpan effectiveTarget = task.TargetTime + task.ExtendedTime;
+
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine($"\n[NOTIFICATION] Target time ({this.FormatDuration(effectiveTarget)}) reached for \"{task.TaskName}\"!");
+            Console.ResetColor();
+            Console.WriteLine();
+        }
+
+        /// <summary>
+        /// Handles the <see cref="TimerServices.OnDailyWorkReminder"/> event by playing a console alert and reminding the user to start working.
+        /// </summary>
+        /// <param name="user">The <see cref="User"/> whose daily start time has arrived.</param>
+        private void HandleDailyWorkReminder(User user)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"\n[DAILY REMINDER] Good day, {user.Name}! It's {user.DayStartTime:hh:mm tt} — time to start your timer and begin work!");
+            Console.ResetColor();
+            Console.WriteLine();
         }
 
         /// <summary>

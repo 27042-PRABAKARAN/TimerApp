@@ -33,7 +33,7 @@ namespace Timer
                 new AuthenticationView(authService);
 
             TaskHistoryView taskHistoryView =
-                new TaskHistoryView(taskHistoryService);
+                new TaskHistoryView(taskHistoryService, timerService);
 
             TimerView timerView =
                 new TimerView(timerService, taskHistoryView);
