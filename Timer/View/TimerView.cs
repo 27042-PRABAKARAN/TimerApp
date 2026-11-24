@@ -9,15 +9,18 @@ namespace Timer.Views
     public class TimerView
     {
         private readonly TimerServices _timerService;
+        private readonly LogView _logView;
         private bool _targetReachedBannerShown;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TimerView"/> class.
         /// </summary>
         /// <param name="timerService">The service used to manage task creation, timing, and persistence.</param>
-        public TimerView(TimerServices timerService)
+        /// <param name="logView">The view responsible for displaying recorded task logs.</param>
+        public TimerView(TimerServices timerService, LogView logView)
         {
             this._timerService = timerService;
+            this._logView = logView;
         }
 
         /// <summary>
@@ -40,10 +43,8 @@ namespace Timer.Views
                     Console.WriteLine($"Daily Work Start Time: {user.DayStartTime:hh:mm tt}");
                     Console.WriteLine();
                     Console.WriteLine("1. New Task");
-                    Console.WriteLine("2. Logs");
-                    Console.WriteLine("3. Import");
-                    Console.WriteLine("4. Export");
-                    Console.WriteLine("5. Logout");
+                    Console.WriteLine("2. History");
+                    Console.WriteLine("3. Logout");
                     Console.WriteLine();
 
                     Console.Write("Enter choice: ");
@@ -56,18 +57,10 @@ namespace Timer.Views
                             break;
 
                         case "2":
-                            this.ShowLogsMock();
+                            this._logView.ShowLogs(user);
                             break;
 
                         case "3":
-                            this.ShowImportMock();
-                            break;
-
-                        case "4":
-                            this.ShowExportMock();
-                            break;
-
-                        case "5":
                             return;
 
                         default:
@@ -118,7 +111,7 @@ namespace Timer.Views
 
                 TimeSpan targetTime = new TimeSpan(hours, minutes, seconds);
 
-                Console.WriteLine($"\nTarget Duration Set: {FormatDuration(targetTime)}");
+                Console.WriteLine($"\nTarget Duration Set: {this.FormatDuration(targetTime)}");
                 Console.WriteLine("Press ENTER to start the timer, or any other key to cancel...");
 
                 if (Console.ReadKey(true).Key != ConsoleKey.Enter)
@@ -184,7 +177,7 @@ namespace Timer.Views
 
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"\n[NOTIFICATION] Target time ({FormatDuration(effectiveTarget)}) reached for \"{task.TaskName}\"!");
+            Console.WriteLine($"\n[NOTIFICATION] Target time ({this.FormatDuration(effectiveTarget)}) reached for \"{task.TaskName}\"!");
             Console.ResetColor();
             Console.WriteLine();
 
@@ -237,7 +230,7 @@ namespace Timer.Views
                     string status = this._timerService.IsRunning ? "RUNNING" : "PAUSED ";
                     string targetFlag = this._targetReachedBannerShown ? " [TARGET REACHED]" : string.Empty;
 
-                    Console.Write($"\r[{status}] Elapsed: {FormatDuration(elapsed)}{targetFlag}   ");
+                    Console.Write($"\r[{status}] Elapsed: {this.FormatDuration(elapsed)}{targetFlag}   ");
                     Thread.Sleep(200);
                 }
 
@@ -274,10 +267,10 @@ namespace Timer.Views
                         Console.WriteLine($"End Date       : {completedTask.EndDate}");
                         Console.WriteLine($"Start Time     : {completedTask.StartTime:hh:mm:ss tt}");
                         Console.WriteLine($"End Time       : {completedTask.EndTime:hh:mm:ss tt}");
-                        Console.WriteLine($"Target         : {FormatDuration(completedTask.TargetTime)}");
-                        Console.WriteLine($"Extended       : +{FormatDuration(completedTask.ExtendedTime)}");
-                        Console.WriteLine($"Elapsed Worked : {FormatDuration(completedTask.ElapsedTime)}");
-                        Console.WriteLine($"Total Duration : {FormatDuration(completedTask.TotalDuration)}");
+                        Console.WriteLine($"Target         : {this.FormatDuration(completedTask.TargetTime)}");
+                        Console.WriteLine($"Extended       : +{this.FormatDuration(completedTask.ExtendedTime)}");
+                        Console.WriteLine($"Elapsed Worked : {this.FormatDuration(completedTask.ElapsedTime)}");
+                        Console.WriteLine($"Total Duration : {this.FormatDuration(completedTask.TotalDuration)}");
                     }
 
                     Console.WriteLine();
@@ -318,8 +311,8 @@ namespace Timer.Views
             Console.WriteLine($"Task       : {task.TaskName}");
             Console.WriteLine($"Start Date : {task.StartDate}");
             Console.WriteLine($"Start Time : {task.StartTime:hh:mm:ss tt}");
-            Console.WriteLine($"Target     : {FormatDuration(task.TargetTime)}");
-            Console.WriteLine($"Extended   : +{FormatDuration(task.ExtendedTime)} (Total Target: {FormatDuration(task.TargetTime + task.ExtendedTime)})");
+            Console.WriteLine($"Target     : {this.FormatDuration(task.TargetTime)}");
+            Console.WriteLine($"Extended   : +{this.FormatDuration(task.ExtendedTime)} (Total Target: {this.FormatDuration(task.TargetTime + task.ExtendedTime)})");
             Console.WriteLine();
             Console.WriteLine("[P] Pause/Resume   [E] Extend Target   [S] Stop & Save");
             Console.WriteLine();
@@ -354,7 +347,7 @@ namespace Timer.Views
                         this._targetReachedBannerShown = false;
                     }
 
-                    Console.WriteLine($"\nExtended by {FormatDuration(extension)}. Total Extended: +{FormatDuration(task.ExtendedTime)} | New Target: {FormatDuration(effectiveTarget)}");
+                    Console.WriteLine($"\nExtended by {this.FormatDuration(extension)}. Total Extended: +{this.FormatDuration(task.ExtendedTime)} | New Target: {this.FormatDuration(effectiveTarget)}");
                 }
                 else
                 {
@@ -383,42 +376,6 @@ namespace Timer.Views
         private string FormatDuration(TimeSpan duration)
         {
             return $"{(int)duration.TotalHours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
-        }
-
-        /// <summary>
-        /// Displays a placeholder screen for viewing recorded task time logs.
-        /// </summary>
-        private void ShowLogsMock()
-        {
-            Console.Clear();
-            Console.WriteLine("========== TIME LOGS ==========");
-            Console.WriteLine("[Mock] Recorded task durations and history will appear here.");
-            Console.WriteLine("\nPress any key to return to dashboard...");
-            Console.ReadKey();
-        }
-
-        /// <summary>
-        /// Displays a placeholder screen for importing task logs from an external file.
-        /// </summary>
-        private void ShowImportMock()
-        {
-            Console.Clear();
-            Console.WriteLine("========== IMPORT TASKS ==========");
-            Console.WriteLine("[Mock] Import tasks from JSON/CSV file will appear here.");
-            Console.WriteLine("\nPress any key to return to dashboard...");
-            Console.ReadKey();
-        }
-
-        /// <summary>
-        /// Displays a placeholder screen for exporting task logs to an external file.
-        /// </summary>
-        private void ShowExportMock()
-        {
-            Console.Clear();
-            Console.WriteLine("========== EXPORT TASKS ==========");
-            Console.WriteLine("[Mock] Export tasks to JSON/CSV file will appear here.");
-            Console.WriteLine("\nPress any key to return to dashboard...");
-            Console.ReadKey();
         }
     }
 }

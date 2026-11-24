@@ -28,8 +28,11 @@ namespace Timer
             AuthenticationView authView =
                 new AuthenticationView(authService);
 
+            LogView logView =
+                new LogView(timerService);
+
             TimerView timerView =
-                new TimerView(timerService);
+                new TimerView(timerService, logView);
 
             while (true)
             {

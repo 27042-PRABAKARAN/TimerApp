@@ -14,7 +14,8 @@ namespace Timer.Views
         /// <summary>
         /// Initializes a new instance of the <see cref="AuthenticationView"/> class.
         /// </summary>
-        /// <param name="authService">The service used to handle user authentication and registration.</param>
+        /// <param name="authService">The service used to han00
+        /// dle user authentication and registration.</param>
         public AuthenticationView(AuthenticationServices authService)
         {
             this._authService = authService;
@@ -148,7 +149,6 @@ namespace Timer.Views
             Console.WriteLine("Press any key to continue...");
             Console.ReadKey();
         }
-
 
         /// <summary>
         /// Prompts the user for 12-hour clock components (hour, minute, and AM/PM) and converts them into a <see cref="TimeOnly"/> value.
