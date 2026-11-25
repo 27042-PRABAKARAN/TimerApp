@@ -79,6 +79,147 @@ namespace Timer.Service
                     .ToList();
             }
 
+            return this.SaveTasksToCsv(tasks, userName);
+        }
+
+        /// <summary>
+        /// Exports task records for a specific user into a structured CSV file, filtered by a specific EndDate range.
+        /// </summary>
+        /// <param name="userId">The unique identifier of the user.</param>
+        /// <param name="userName">The name of the user, used for the default file naming scheme.</param>
+        /// <param name="filterStartDate">The starting date of the filter range (inclusive).</param>
+        /// <param name="filterEndDate">The ending date of the filter range (inclusive).</param>
+        /// <returns>The absolute file path where the CSV data was successfully saved.</returns>
+        public string ExportTasksToCsv(Guid userId, string userName, DateOnly filterStartDate, DateOnly filterEndDate)
+        {
+            List<TaskItem> tasks = this.GetUserTasks(userId);
+            tasks = tasks
+                .Where(t => t.EndDate.HasValue &&
+                t.EndDate.Value >= filterStartDate &&
+                t.EndDate.Value <= filterEndDate)
+                .OrderByDescending(t => t.EndDate)
+                .ThenByDescending(t => t.EndTime)
+                .ToList();
+
+            return this.SaveTasksToCsv(tasks, userName);
+        }
+
+        /// <summary>
+        /// Imports task logs from a structured CSV file and saves them to the repository for a specific user.
+        /// </summary>
+        /// <param name="userId">The unique identifier of the user who will own these logs.</param>
+        /// <param name="filePath">The absolute or relative path to the source CSV file.</param>
+        /// <returns>The total number of tasks successfully parsed and saved to the repository.</returns>
+        public int ImportTasksFromCsv(Guid userId, string filePath)
+        {
+            if (!File.Exists(filePath))
+            {
+                throw new FileNotFoundException("The specified CSV file could not be found.", filePath);
+            }
+
+            int successCount = 0;
+
+            using (StreamReader reader = new StreamReader(filePath, System.Text.Encoding.UTF8))
+            {
+                // Skip the header row
+                string? headerLine = reader.ReadLine();
+                if (headerLine == null)
+                {
+                    return 0;
+                }
+
+                string? line;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (string.IsNullOrWhiteSpace(line))
+                    {
+                        continue;
+                    }
+
+                    // Custom parse to handle commas wrapped inside double quotes safely
+                    List<string> columns = new List<string>();
+                    bool inQuotes = false;
+                    int start = 0;
+
+                    for (int i = 0; i < line.Length; i++)
+                    {
+                        if (line[i] == '"')
+                        {
+                            inQuotes = !inQuotes;
+                        }
+                        else if (line[i] == ',' && !inQuotes)
+                        {
+                            columns.Add(line.Substring(start, i - start));
+                            start = i + 1;
+                        }
+                    }
+
+                    columns.Add(line.Substring(start));
+
+                    if (columns.Count < 9)
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        string rawTaskName = columns[0].Trim();
+                        if (rawTaskName.StartsWith("\"") && rawTaskName.EndsWith("\"") && rawTaskName.Length >= 2)
+                        {
+                            rawTaskName = rawTaskName.Substring(1, rawTaskName.Length - 2).Replace("\"\"", "\"");
+                        }
+
+                        // Combine DateOnly and Time representations to build proper DateTime instances for Start/End
+                        DateOnly parsedStartDate = DateOnly.ParseExact(columns[1].Trim(), "yyyy-MM-dd");
+                        TimeSpan parsedStartTime = TimeSpan.Parse(columns[3].Trim());
+                        DateTime combinedStartTime = parsedStartDate.ToDateTime(TimeOnly.FromTimeSpan(parsedStartTime));
+
+                        DateTime? combinedEndTime = null;
+                        string rawEndDate = columns[2].Trim();
+                        string rawEndTime = columns[4].Trim();
+
+                        if (rawEndDate != "In Progress" && rawEndTime != "-")
+                        {
+                            DateOnly parsedEndDate = DateOnly.ParseExact(rawEndDate, "yyyy-MM-dd");
+                            TimeSpan parsedEndTimeValue = TimeSpan.Parse(rawEndTime);
+                            combinedEndTime = parsedEndDate.ToDateTime(TimeOnly.FromTimeSpan(parsedEndTimeValue));
+                        }
+
+                        TaskItem task = new TaskItem
+                        {
+                            TaskId = Guid.NewGuid(),
+                            UserId = userId,
+                            TaskName = rawTaskName,
+                            StartDate = parsedStartDate,
+                            EndDate = rawEndDate == "In Progress" ? null : DateOnly.ParseExact(rawEndDate, "yyyy-MM-dd"),
+                            StartTime = combinedStartTime,
+                            EndTime = combinedEndTime,
+                            TargetTime = TimeSpan.Parse(columns[5].Trim()),
+                            ExtendedTime = TimeSpan.Parse(columns[6].Trim()),
+                            ElapsedTime = TimeSpan.Parse(columns[7].Trim()),
+                            TotalDuration = TimeSpan.Parse(columns[8].Trim()),
+                        };
+
+                        // Persist the entity via your void Add method setup
+                        this._taskRepository.Add(task);
+                        successCount++;
+                    }
+                    catch
+                    {
+                        // Row conversion failed; skip record and proceed with execution loop
+                        continue;
+                    }
+                }
+            }
+
+            return successCount;
+        }
+
+        /// <summary>
+        /// Core reusable logic to handle CSV formatting, file naming, directory creation, and writing.
+        /// </summary>
+        private string SaveTasksToCsv(List<TaskItem> tasks, string userName)
+        {
             string exportsFolder = Path.Combine(Directory.GetCurrentDirectory(), "Exports");
             Directory.CreateDirectory(exportsFolder);
 
@@ -94,18 +235,22 @@ namespace Timer.Service
 
                 foreach (var task in tasks)
                 {
-                    // Escape commas in task names to prevent shifting columns
-                    string safeTaskName = task.TaskName.Contains(",") ? $"\"{task.TaskName}\"" : task.TaskName;
+                    // Escape commas and double quotes in task names to prevent breaking columns
+                    string safeTaskName = task.TaskName ?? string.Empty;
+                    if (safeTaskName.Contains(",") || safeTaskName.Contains("\""))
+                    {
+                        safeTaskName = $"\"{safeTaskName.Replace("\"", "\"\"")}\"";
+                    }
 
                     writer.WriteLine($"{safeTaskName}," +
-                                     $"{task.StartDate:yyyy-MM-dd}," +
-                                     $"{(task.EndDate.HasValue ? task.EndDate.Value.ToString("yyyy-MM-dd") : "In Progress")}," +
-                                     $"{task.StartTime:HH:mm:ss}," +
-                                     $"{(task.EndTime.HasValue ? task.EndTime.Value.ToString("HH:mm:ss") : "-")}," +
-                                     $"{task.TargetTime}," +
-                                     $"{task.ExtendedTime}," +
-                                     $"{task.ElapsedTime}," +
-                                     $"{task.TotalDuration}");
+                             $"{task.StartDate:yyyy-MM-dd}," +
+                             $"{(task.EndDate.HasValue ? task.EndDate.Value.ToString("yyyy-MM-dd") : "In Progress")}," +
+                             $"{task.StartTime:HH:mm:ss}," +
+                             $"{(task.EndTime.HasValue ? task.EndTime.Value.ToString("HH:mm:ss") : "-")}," +
+                             $"{task.TargetTime}," +
+                             $"{task.ExtendedTime}," +
+                             $"{task.ElapsedTime}," +
+                             $"{task.TotalDuration}");
                 }
             }
 

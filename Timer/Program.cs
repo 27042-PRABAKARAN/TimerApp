@@ -1,6 +1,6 @@
 ﻿using Timer.Interfaces;
 using Timer.Models;
-using Timer.Repositories;
+using Timer.Repository;
 using Timer.Service;
 using Timer.Services;
 using Timer.Views;

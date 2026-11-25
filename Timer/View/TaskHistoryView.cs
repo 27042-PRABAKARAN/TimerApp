@@ -9,7 +9,7 @@ namespace Timer.Views
     /// </summary>
     public class TaskHistoryView
     {
-        private const int MaxRecentLogs = 5;
+        private const int MaxRecentLogs = 10;
         private readonly TaskHistoryServices _taskHistoryService;
         private readonly TimerServices _timerService;
 
@@ -34,7 +34,7 @@ namespace Timer.Views
             {
                 Console.Clear();
 
-                Console.WriteLine("==================== RECENT TIME LOGS (LAST 5) ====================");
+                Console.WriteLine("==================== RECENT TIME LOGS (LAST 10) ====================");
                 Console.WriteLine($"User: {user.Name} ({user.Email})");
                 Console.WriteLine();
 
@@ -78,16 +78,16 @@ namespace Timer.Views
                         $"{endDateText,-12} " +
                         $"{task.StartTime:hh:mm:ss tt} " +
                         $"{endTimeText,-11} " +
-                        $"{FormatDuration(task.TargetTime),-10} " +
-                        $"{FormatDuration(task.ExtendedTime),-10} " +
-                        $"{FormatDuration(task.ElapsedTime),-10} " +
-                        $"{FormatDuration(task.TotalDuration),-10}");
+                        $"{this.FormatDuration(task.TargetTime),-10} " +
+                        $"{this.FormatDuration(task.ExtendedTime),-10} " +
+                        $"{this.FormatDuration(task.ElapsedTime),-10} " +
+                        $"{this.FormatDuration(task.TotalDuration),-10}");
                 }
 
                 Console.WriteLine(new string('-', 120));
                 Console.WriteLine($"Showing              : {recentTasks.Count} of {allTasks.Count} total tasks");
-                Console.WriteLine($"Recent Active Worked : {FormatDuration(recentWorked)}");
-                Console.WriteLine($"Recent Session Span  : {FormatDuration(recentSession)}");
+                Console.WriteLine($"Recent Active Worked : {this.FormatDuration(recentWorked)}");
+                Console.WriteLine($"Recent Session Span  : {this.FormatDuration(recentSession)}");
                 Console.WriteLine(new string('-', 120));
 
                 Console.WriteLine("\n[E] Edit Name | [D] Delete Log | [R] Resume Task | [B] Back to Dashboard");
@@ -110,7 +110,7 @@ namespace Timer.Views
                         {
                             case "E": this.HandleEdit(selectedTask); break;
                             case "D": this.HandleDelete(selectedTask); break;
-                            case "R": this.HandleResume(selectedTask); return; // Exit view to hand off to active dashboard loop
+                            case "R": this.HandleResume(selectedTask); return;
                         }
                     }
                     else
@@ -130,32 +130,85 @@ namespace Timer.Views
         {
             Console.Clear();
             Console.WriteLine("==================== EXPORT HISTORY DATA ====================");
-            Console.Write("Enter number of recent records to export (or press Enter for all): ");
+            Console.WriteLine("Select export mode:");
+            Console.WriteLine("1. Export by most recent record limit");
+            Console.WriteLine("2. Export by completion date range");
+            Console.Write("\nEnter choice (1 or 2): ");
 
-            string? input = Console.ReadLine();
-            int? limit = null;
-
-            if (!string.IsNullOrWhiteSpace(input))
-            {
-                if (int.TryParse(input, out int parsedLimit) && parsedLimit > 0)
-                {
-                    limit = parsedLimit;
-                }
-                else
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("Invalid number entered. Defaulting to exporting all records...");
-                    Console.ResetColor();
-                }
-            }
-
-            Console.WriteLine("\nPreparing records for data compilation...");
+            string? choice = Console.ReadLine();
+            string destinationPath = string.Empty;
 
             try
             {
-                // Pass the optional limit into the updated service method
-                string destinationPath = this._taskHistoryService.ExportTasksToCsv(user.UserId, user.Name, limit);
+                switch (choice)
+                {
+                    case "1":
+                        // --- Record Limit Pathway ---
+                        Console.Write("\nEnter number of recent records to export (or press Enter for all): ");
+                        string? input = Console.ReadLine();
+                        int? limit = null;
 
+                        if (!string.IsNullOrWhiteSpace(input))
+                        {
+                            if (int.TryParse(input, out int parsedLimit) && parsedLimit > 0)
+                            {
+                                limit = parsedLimit;
+                            }
+                            else
+                            {
+                                Console.ForegroundColor = ConsoleColor.Yellow;
+                                Console.WriteLine("Invalid number entered. Defaulting to exporting all records...");
+                                Console.ResetColor();
+                            }
+                        }
+
+                        Console.WriteLine("\nPreparing records for data compilation...");
+                        destinationPath = this._taskHistoryService.ExportTasksToCsv(user.UserId, user.Name, limit);
+                        break;
+
+                    case "2":
+                        // --- Date Range Pathway ---
+                        Console.Write("\nEnter start date (yyyy-MM-dd): ");
+                        string? startInput = Console.ReadLine();
+
+                        Console.Write("Enter end date (yyyy-MM-dd): ");
+                        string? endInput = Console.ReadLine();
+
+                        if (!DateOnly.TryParse(startInput, out DateOnly startDate) || !DateOnly.TryParse(endInput, out DateOnly endDate))
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.WriteLine("\n[ERROR] Invalid date format. Please use yyyy-MM-dd.");
+                            Console.ResetColor();
+                            Console.WriteLine("\nPress any key to return to dashboard...");
+                            Console.ReadKey();
+                            return;
+                        }
+
+                        if (startDate > endDate)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                            Console.WriteLine("\n[WARNING] Start date cannot be after end date.");
+                            Console.ResetColor();
+                            Console.WriteLine("\nPress any key to return to dashboard...");
+                            Console.ReadKey();
+                            return;
+                        }
+
+                        Console.WriteLine("\nFiltering and preparing records for data compilation...");
+                        destinationPath = this._taskHistoryService.ExportTasksToCsv(user.UserId, user.Name, startDate, endDate);
+                        break;
+
+                    default:
+                        // --- Fallback Pathway ---
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("\n[ERROR] Invalid choice. Returning to dashboard.");
+                        Console.ResetColor();
+                        Console.WriteLine("\nPress any key to return to dashboard...");
+                        Console.ReadKey();
+                        return;
+                }
+
+                // --- Success Notification Block (Shared by both valid pathways) ---
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine("\n[SUCCESS] Export process finished flawlessly!");
                 Console.ResetColor();
@@ -165,6 +218,76 @@ namespace Timer.Views
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"\n[ERROR] Failed to compile text matrix streams: {ex.Message}");
+                Console.ResetColor();
+            }
+
+            Console.WriteLine("\nPress any key to return to dashboard...");
+            Console.ReadKey();
+        }
+
+        /// <summary>
+        /// Visual workspace engine wrapper that coordinates file ingestion pathways and displays loading feedback.
+        /// </summary>
+        /// <param name="user">The currently authenticated user context under which records will be imported.</param>
+        public void ImportData(User user)
+        {
+            Console.Clear();
+            Console.WriteLine("==================== IMPORT HISTORY DATA ====================");
+            Console.WriteLine($"Target User Context: {user.Name} ({user.Email})");
+            Console.WriteLine();
+            Console.Write("Enter the absolute file path of the CSV log to import: ");
+
+            string? importPath = Console.ReadLine();
+
+            if (string.IsNullOrWhiteSpace(importPath))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("\n[ERROR] Path cannot be empty.");
+                Console.ResetColor();
+                Console.WriteLine("\nPress any key to return to dashboard...");
+                Console.ReadKey();
+                return;
+            }
+
+            // Clean potential encapsulating quotes added by dragging and dropping files into the terminal
+            importPath = importPath.Trim('"', '\'');
+
+            if (!File.Exists(importPath))
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("\n[ERROR] The specified CSV file could not be found at that location.");
+                Console.ResetColor();
+                Console.WriteLine("\nPress any key to return to dashboard...");
+                Console.ReadKey();
+                return;
+            }
+
+            Console.WriteLine("\nReading file streams and processing data matrix ingestion...");
+
+            try
+            {
+                // Execute the ingestion process through your updated service class
+                int importedCount = this._taskHistoryService.ImportTasksFromCsv(user.UserId, importPath);
+
+                if (importedCount > 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"\n[SUCCESS] Ingestion completed safely!");
+                    Console.WriteLine($"Successfully loaded and added {importedCount} tasks into your logs.");
+                    Console.ResetColor();
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("\n[WARNING] Process finished, but 0 valid task rows were imported.");
+                    Console.WriteLine("Ensure the CSV file is structured with the appropriate header and columns.");
+                    Console.ResetColor();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"\n[ERROR] Ingestion process failed: {ex.Message}");
                 Console.ResetColor();
             }
 
@@ -183,7 +306,7 @@ namespace Timer.Views
             Console.WriteLine($"Current Name: {task.TaskName}");
             Console.Write("Enter new task name (leave blank to cancel): ");
 
-            string newName = Console.ReadLine()?.Trim() ?? "";
+            string newName = Console.ReadLine()?.Trim() ?? string.Empty;
             if (!string.IsNullOrEmpty(newName))
             {
                 task.TaskName = newName;
@@ -194,6 +317,7 @@ namespace Timer.Views
             {
                 Console.WriteLine("\nNo changes made. Press any key to continue...");
             }
+
             Console.ReadKey();
         }
 
@@ -213,6 +337,7 @@ namespace Timer.Views
             {
                 Console.WriteLine("Deletion cancelled. Press any key to continue...");
             }
+
             Console.ReadKey();
         }
 
@@ -225,7 +350,7 @@ namespace Timer.Views
             Console.Clear();
             Console.WriteLine("==================== RESUMING HISTORICAL TASK ====================");
             Console.WriteLine($"Resuming tracking context for: '{task.TaskName}'");
-            Console.WriteLine($"Previously Logged Time   : {FormatDuration(task.ElapsedTime)}");
+            Console.WriteLine($"Previously Logged Time   : {this.FormatDuration(task.ElapsedTime)}");
             Console.WriteLine("\nLoading stopwatch core engine... tracking resumed.");
 
             this._timerService.ResumeExistingTask(task);
@@ -239,7 +364,7 @@ namespace Timer.Views
         /// </summary>
         /// <param name="duration">The duration to format.</param>
         /// <returns>A formatted <c>HH:mm:ss</c> string.</returns>
-        private static string FormatDuration(TimeSpan duration)
+        private string FormatDuration(TimeSpan duration)
         {
             return $"{(int)duration.TotalHours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
         }

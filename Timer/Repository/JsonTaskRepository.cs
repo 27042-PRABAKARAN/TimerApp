@@ -2,7 +2,7 @@
 using Timer.Interfaces;
 using Timer.Models;
 
-namespace Timer.Repositories
+namespace Timer.Repository
 {
     /// <summary>
     /// Provides a JSON file-based implementation of <see cref="ITaskRepository"/> for managing <see cref="TaskItem"/> entities.
@@ -40,7 +40,7 @@ namespace Timer.Repositories
         }
 
         /// <summary>
-        /// Adds a new task item or updates it if it already exists (upsert logic for resumed tasks), then persists changes.
+        /// Adds a new task item or updates it if it already exists (logic for resumed tasks), then persists changes.
         /// </summary>
         /// <param name="task">The <see cref="TaskItem"/> to add or update.</param>
         public void Add(TaskItem task)

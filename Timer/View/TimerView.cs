@@ -45,7 +45,8 @@ namespace Timer.Views
                     Console.WriteLine("1. New Task");
                     Console.WriteLine("2. History");
                     Console.WriteLine("3. Export Data");
-                    Console.WriteLine("4. Logout");
+                    Console.WriteLine("4. Import Logs"); // Added option
+                    Console.WriteLine("5. Logout");      // Shifted down
                     Console.WriteLine();
 
                     Console.Write("Enter choice: ");
@@ -74,11 +75,16 @@ namespace Timer.Views
                             break;
 
                         case "3":
-                            // Route directly to your new custom file generation interface layout
+                            // Route directly to your custom file generation interface layout
                             this._logView.TriggerHistoryExport(user);
                             break;
 
                         case "4":
+                            // Delegate completely to your view component to manage paths, screens, and service parsing
+                            this._logView.ImportData(user);
+                            break;
+
+                        case "5":
                             return;
 
                         default:
@@ -189,6 +195,7 @@ namespace Timer.Views
 
             return int.TryParse(input, out value) && value >= 0;
         }
+
         /// <summary>
         /// Runs the interactive live-updating loop on the terminal screen, parsing tracking commands until the session stops.
         /// </summary>

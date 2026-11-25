@@ -2,7 +2,7 @@
 using Timer.Interfaces;
 using Timer.Models;
 
-namespace Timer.Repositories
+namespace Timer.Repository
 {
     /// <summary>
     /// Provides a JSON file-based implementation of <see cref="IUserRepository"/> for managing <see cref="User"/> entities.
