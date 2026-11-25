@@ -41,12 +41,23 @@ namespace Timer.Views
                     Console.WriteLine("========== TASK TIMER DASHBOARD ==========");
                     Console.WriteLine($"Welcome, {user.Name} ({user.Email})!");
                     Console.WriteLine($"Daily Work Start Time: {user.DayStartTime:hh:mm tt}");
+
+                    TaskItem? activeTask = this._timerService.ActiveTask;
+                    if (activeTask != null)
+                    {
+                        string state = this._timerService.IsRunning ? "RUNNING" : "PAUSED";
+
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine($"\n[ACTIVE TASK - {state}] {activeTask.TaskName}");
+                        Console.ResetColor();
+                    }
+
                     Console.WriteLine();
-                    Console.WriteLine("1. New Task");
+                    Console.WriteLine(activeTask != null ? "1. Return to Active Task" : "1. New Task");
                     Console.WriteLine("2. History");
                     Console.WriteLine("3. Export Data");
-                    Console.WriteLine("4. Import Logs"); // Added option
-                    Console.WriteLine("5. Logout");      // Shifted down
+                    Console.WriteLine("4. Import Logs");
+                    Console.WriteLine("5. Logout");
                     Console.WriteLine();
 
                     Console.Write("Enter choice: ");
@@ -55,14 +66,27 @@ namespace Timer.Views
                     switch (choice)
                     {
                         case "1":
-                            this.CreateAndRunTask(user);
+                            if (this._timerService.ActiveTask != null)
+                            {
+                                bool startNextImmediately = this.ExecuteTimerWorkflow(this._timerService.ActiveTask);
+
+                                if (startNextImmediately)
+                                {
+                                    this.CreateAndRunTask(user);
+                                }
+                            }
+                            else
+                            {
+                                this.CreateAndRunTask(user);
+                            }
+
                             break;
 
                         case "2":
-                            this._logView.ShowLogs(user);
+                            bool resumedFromHistory = this._logView.ShowLogs(user);
 
-                            // Check if a task was loaded into the engine from the History View resume selection
-                            if (this._timerService.ActiveTask != null)
+                            // Only jump into the live timer if a task was explicitly resumed from History
+                            if (resumedFromHistory && this._timerService.ActiveTask != null)
                             {
                                 bool startNextImmediately = this.ExecuteTimerWorkflow(this._timerService.ActiveTask);
 
@@ -85,6 +109,25 @@ namespace Timer.Views
                             break;
 
                         case "5":
+                            if (this._timerService.ActiveTask != null)
+                            {
+                                Console.Write("\nA task is still active! Stop & save before logging out? (Y/N, or any other key to cancel): ");
+                                ConsoleKey confirmKey = Console.ReadKey(true).Key;
+                                Console.WriteLine();
+
+                                if (confirmKey == ConsoleKey.Y)
+                                {
+                                    this._timerService.StopAndSaveTask();
+                                    return;
+                                }
+                                else if (confirmKey == ConsoleKey.N)
+                                {
+                                    return;
+                                }
+
+                                break;
+                            }
+
                             return;
 
                         default:
@@ -163,7 +206,10 @@ namespace Timer.Views
         /// <returns><see langword="true"/> if the caller should continue running the task creation workflow loop; otherwise, <see langword="false"/>.</returns>
         private bool ExecuteTimerWorkflow(TaskItem task)
         {
-            this._targetReachedBannerShown = false;
+            // Preserve the [TARGET REACHED] flag if the target passed while viewing the dashboard
+            TimeSpan effectiveTarget = task.TargetTime + task.ExtendedTime;
+            this._targetReachedBannerShown = effectiveTarget > TimeSpan.Zero && this._timerService.GetElapsedTime() >= effectiveTarget;
+
             this._timerService.OnTargetTimeReached += this.HandleTargetTimeReached;
 
             try
@@ -197,7 +243,7 @@ namespace Timer.Views
         }
 
         /// <summary>
-        /// Runs the interactive live-updating loop on the terminal screen, parsing tracking commands until the session stops.
+        /// Runs the interactive live-updating loop on the terminal screen, parsing tracking commands until the session stops or returns to the dashboard.
         /// </summary>
         /// <param name="task">The active tracking context to map to the user interface.</param>
         /// <returns><see langword="true"/> if the caller should continue running the task creation loop; otherwise, <see langword="false"/>.</returns>
@@ -235,6 +281,11 @@ namespace Timer.Views
                 {
                     this.PromptExtendTargetTime(task);
                     this.RenderTimerHeader(task);
+                }
+                else if (key == ConsoleKey.B)
+                {
+                    // Return to dashboard while leaving the timer active in the background
+                    return false;
                 }
                 else if (key == ConsoleKey.S)
                 {
@@ -298,7 +349,7 @@ namespace Timer.Views
             Console.WriteLine($"Target     : {this.FormatDuration(task.TargetTime)}");
             Console.WriteLine($"Extended   : +{this.FormatDuration(task.ExtendedTime)} (Total Target: {this.FormatDuration(task.TargetTime + task.ExtendedTime)})");
             Console.WriteLine();
-            Console.WriteLine("[P] Pause/Resume   [E] Extend Target   [S] Stop & Save");
+            Console.WriteLine("[P] Pause/Resume   [E] Extend Target   [S] Stop & Save   [B] Back to Dashboard");
             Console.WriteLine();
         }
 

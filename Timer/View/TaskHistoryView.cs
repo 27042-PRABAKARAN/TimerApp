@@ -25,10 +25,11 @@ namespace Timer.Views
         }
 
         /// <summary>
-        /// Displays the last 5 recorded task logs with interactive management prompts for editing, deleting, or resuming.
+        /// Displays the last 10 recorded task logs with interactive management prompts for editing, deleting, or resuming.
         /// </summary>
         /// <param name="user">The currently authenticated <see cref="User"/>.</param>
-        public void ShowLogs(User user)
+        /// <returns><see langword="true"/> if a task was resumed and should open the live timer view; otherwise, <see langword="false"/>.</returns>
+        public bool ShowLogs(User user)
         {
             while (true)
             {
@@ -45,10 +46,10 @@ namespace Timer.Views
                     Console.WriteLine("No task logs found yet. Start a new task from the dashboard!");
                     Console.WriteLine("\nPress any key to return to dashboard...");
                     Console.ReadKey();
-                    return;
+                    return false;
                 }
 
-                // Slice data to grab the 5 absolute most recent tasks
+                // Slice data to grab the absolute most recent tasks
                 List<TaskItem> recentTasks = allTasks.Take(MaxRecentLogs).ToList();
 
                 Console.WriteLine(
@@ -86,8 +87,6 @@ namespace Timer.Views
 
                 Console.WriteLine(new string('-', 120));
                 Console.WriteLine($"Showing              : {recentTasks.Count} of {allTasks.Count} total tasks");
-                Console.WriteLine($"Recent Active Worked : {this.FormatDuration(recentWorked)}");
-                Console.WriteLine($"Recent Session Span  : {this.FormatDuration(recentSession)}");
                 Console.WriteLine(new string('-', 120));
 
                 Console.WriteLine("\n[E] Edit Name | [D] Delete Log | [R] Resume Task | [B] Back to Dashboard");
@@ -96,7 +95,7 @@ namespace Timer.Views
 
                 if (choice == "B")
                 {
-                    break;
+                    return false;
                 }
 
                 if (choice == "E" || choice == "D" || choice == "R")
@@ -108,9 +107,21 @@ namespace Timer.Views
 
                         switch (choice)
                         {
-                            case "E": this.HandleEdit(selectedTask); break;
-                            case "D": this.HandleDelete(selectedTask); break;
-                            case "R": this.HandleResume(selectedTask); return;
+                            case "E":
+                                this.HandleEdit(selectedTask);
+                                break;
+
+                            case "D":
+                                this.HandleDelete(selectedTask);
+                                break;
+
+                            case "R":
+                                if (this.HandleResume(selectedTask))
+                                {
+                                    return true;
+                                }
+
+                                break;
                         }
                     }
                     else
@@ -210,7 +221,7 @@ namespace Timer.Views
 
                 // --- Success Notification Block (Shared by both valid pathways) ---
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("\n[SUCCESS] Export process finished flawlessly!");
+                Console.WriteLine("\n[SUCCESS] Export process finished!");
                 Console.ResetColor();
                 Console.WriteLine($"File location: {destinationPath}");
             }
@@ -262,7 +273,7 @@ namespace Timer.Views
                 return;
             }
 
-            Console.WriteLine("\nReading file streams and processing data matrix ingestion...");
+            Console.WriteLine("\nReading file streams and processing data ingestion...");
 
             try
             {
@@ -295,10 +306,6 @@ namespace Timer.Views
             Console.ReadKey();
         }
 
-        /// <summary>
-        /// Handles the interactive console workflow for updating an existing task's title.
-        /// </summary>
-        /// <param name="task">The <see cref="TaskItem"/> context to edit.</param>
         private void HandleEdit(TaskItem task)
         {
             Console.Clear();
@@ -311,6 +318,13 @@ namespace Timer.Views
             {
                 task.TaskName = newName;
                 this._taskHistoryService.UpdateTask(task);
+
+                // Keep the in-memory active task name in sync if this task is currently running in the background
+                if (this._timerService.ActiveTask != null && this._timerService.ActiveTask.TaskId == task.TaskId)
+                {
+                    this._timerService.ActiveTask.TaskName = newName;
+                }
+
                 Console.WriteLine("\nTask updated successfully! Press any key to continue...");
             }
             else
@@ -327,6 +341,16 @@ namespace Timer.Views
         /// <param name="task">The <see cref="TaskItem"/> context to remove.</param>
         private void HandleDelete(TaskItem task)
         {
+            if (this._timerService.ActiveTask != null && this._timerService.ActiveTask.TaskId == task.TaskId)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine("\n[ERROR] Cannot delete a task that is currently active in the timer. Stop and save it first.");
+                Console.ResetColor();
+                Console.WriteLine("Press any key to continue...");
+                Console.ReadKey();
+                return;
+            }
+
             Console.Write($"\nAre you sure you want to permanently delete '{task.TaskName}'? (Y/N): ");
             if (Console.ReadLine()?.ToUpper() == "Y")
             {
@@ -345,8 +369,33 @@ namespace Timer.Views
         /// Attaches the selected historical task back to the active timer tracking engine.
         /// </summary>
         /// <param name="task">The <see cref="TaskItem"/> context to load and resume tracking.</param>
-        private void HandleResume(TaskItem task)
+        /// <returns><see langword="true"/> if the task was resumed or opened; <see langword="false"/> if cancelled.</returns>
+        private bool HandleResume(TaskItem task)
         {
+            if (this._timerService.ActiveTask != null)
+            {
+                // If the user selected the exact task already running in the background, just jump back into its live view
+                if (this._timerService.ActiveTask.TaskId == task.TaskId)
+                {
+                    Console.WriteLine("\nThis task is already active in the background. Returning to live timer...");
+                    Console.ReadKey();
+                    return true;
+                }
+
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.Write($"\n'{this._timerService.ActiveTask.TaskName}' is currently active! Stop & save it before resuming '{task.TaskName}'? (Y/N): ");
+                Console.ResetColor();
+
+                if (Console.ReadKey(true).Key != ConsoleKey.Y)
+                {
+                    Console.WriteLine("\nResume cancelled. Press any key to continue...");
+                    Console.ReadKey();
+                    return false;
+                }
+
+                this._timerService.StopAndSaveTask();
+            }
+
             Console.Clear();
             Console.WriteLine("==================== RESUMING HISTORICAL TASK ====================");
             Console.WriteLine($"Resuming tracking context for: '{task.TaskName}'");
@@ -355,8 +404,9 @@ namespace Timer.Views
 
             this._timerService.ResumeExistingTask(task);
 
-            Console.WriteLine("\nResumed successfully! Press any key to jump back into your active dashboard loop...");
+            Console.WriteLine("\nResumed successfully! Press any key to open the live timer...");
             Console.ReadKey();
+            return true;
         }
 
         /// <summary>
