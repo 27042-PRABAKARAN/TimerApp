@@ -69,6 +69,14 @@ namespace Timer.Services
         public TaskItem? ActiveTask => this._activeTask;
 
         /// <summary>
+        /// Gets a value indicating whether the active task has reached or exceeded its target time.
+        /// </summary>
+        /// <value>
+        /// True if the active task's elapsed time has met or passed its target duration; otherwise, false.
+        /// </value>
+        public bool IsTargetReached => this._targetNotified;
+
+        /// <summary>
         /// Starts monitoring the system clock for the specified user's daily work start time.
         /// </summary>
         /// <param name="user">The logged-in user to notify.</param>

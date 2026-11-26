@@ -23,6 +23,6 @@
         /// <summary>
         /// Stops and ends the active timer.
         /// </summary>
-        Stop
+        Stop,
     }
 }

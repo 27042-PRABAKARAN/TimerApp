@@ -72,7 +72,7 @@ namespace Timer.Views
                     "Edit Name",
                     "Resume Task",
                     "Delete Log",
-                    "Dashboard"
+                    "Dashboard",
                         }));
 
                 if (choice == "Dashboard")
@@ -109,7 +109,6 @@ namespace Timer.Views
                 }
             }
         }
-
 
         /// <summary>
         /// Displays the task history in a formatted table with duration totals.

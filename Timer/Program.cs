@@ -42,8 +42,9 @@ namespace Timer
             TaskHistoryView taskHistoryView =
                 new TaskHistoryView(taskHistoryService, timerService, csvServices);
 
-            TimerView timerView =
-                new TimerView(timerService, taskHistoryView, exportView, importView, analyticalDashboard, taskView);
+            ProfileServices profileServices = new ProfileServices(userRepository);
+            ProfileView profileView = new ProfileView(profileServices);
+            Dashboard dashboard = new Dashboard(timerService, taskHistoryView, exportView, importView, analyticalDashboard, taskView, profileView);
 
             while (true)
             {
@@ -54,7 +55,7 @@ namespace Timer
                     break;
                 }
 
-                timerView.ShowDashboard(loggedInUser);
+                dashboard.ShowDashboard(loggedInUser);
             }
 
             Console.WriteLine("\nThank you for using Task Timer!");

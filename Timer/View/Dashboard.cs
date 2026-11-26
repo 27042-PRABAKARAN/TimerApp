@@ -9,7 +9,7 @@ namespace Timer.Views
     /// <summary>
     /// Provides the console-based dashboard for creating tasks, tracking time, viewing task history, and managing task records.
     /// </summary>
-    public class TimerView
+    public class Dashboard
     {
         private readonly TimerServices _timerService;
         private readonly TaskHistoryView _logView;
@@ -18,17 +18,19 @@ namespace Timer.Views
         private readonly TaskView _taskView;
         private readonly AnalyticalDashboard _analyticalDashboard;
         private readonly ConcurrentQueue<string> _dailyReminderMessages = new ConcurrentQueue<string>();
+        private readonly ProfileView _profileView;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="TimerView"/> class.
+        /// Initializes a new instance of the <see cref="Dashboard"/> class.
         /// </summary>
         /// <param name="timerService">The service used to manage task creation, timing, and persistence.</param>
         /// <param name="logView">The view responsible for displaying and managing task history.</param>
         /// <param name="exportView">The view responsible for displaying and managing Export history.</param>
         /// <param name="importView">The view responsible for displaying and managing Import history.</param>
         /// <param name="taskView">The view responsible for displaying and managing Task timer.</param>
+        /// <param name="profileView">The view responsible for updating profile.</param>
         /// <param name="analyticalDashboard">The view responsible for displaying and managing analytical dashboard history.</param>
-        public TimerView(TimerServices timerService, TaskHistoryView logView, ExportView exportView, ImportView importView, AnalyticalDashboard analyticalDashboard, TaskView taskView)
+        public Dashboard(TimerServices timerService, TaskHistoryView logView, ExportView exportView, ImportView importView, AnalyticalDashboard analyticalDashboard, TaskView taskView, ProfileView profileView)
         {
             this._timerService = timerService;
             this._logView = logView;
@@ -36,6 +38,7 @@ namespace Timer.Views
             this._importView = importView;
             this._analyticalDashboard = analyticalDashboard;
             this._taskView = taskView;
+            this._profileView = profileView;
         }
 
         /// <summary>
@@ -44,7 +47,18 @@ namespace Timer.Views
         /// <param name="user">The currently authenticated user.</param>
         public void ShowDashboard(User user)
         {
-            this._timerService.OnDailyWorkReminder += this.HandleDailyWorkReminder;
+            // Define the target reached event inline to print right below the menu layout cleanly without scrambling formatting
+            TargetTimeReachedHandler targetReachedHandler = (task) =>
+            {
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine("[bold red]Target time reached![/]");
+            };
+
+            // Using closure to ensure background reminder checks use the exact, mutated reference loop object
+            DailyWorkReminderHandler internalReminderHandler = (monitoredUser) => this.HandleDailyWorkReminder(monitoredUser);
+
+            this._timerService.OnDailyWorkReminder += internalReminderHandler;
+            this._timerService.OnTargetTimeReached += targetReachedHandler;
             this._timerService.StartDailyReminderMonitor(user);
 
             try
@@ -52,6 +66,8 @@ namespace Timer.Views
                 while (true)
                 {
                     AnsiConsole.Clear();
+
+                    // Reminders and RenderDashboard now read directly from the modified 'user' object instance
                     this.DisplayDailyReminders();
                     this.RenderDashboard(user);
 
@@ -64,6 +80,7 @@ namespace Timer.Views
                         "Export Data",
                         "Import Logs",
                         "Analytical Dashboard",
+                        "Profile Settings",
                         "Logout",
                     };
 
@@ -120,6 +137,10 @@ namespace Timer.Views
                             this._analyticalDashboard.ShowAnalyticsDashboard(user);
                             break;
 
+                        case "Profile Settings":
+                            this._profileView.ShowProfileMenu(user);
+                            break;
+
                         case "Logout":
                             if (this._timerService.ActiveTask != null)
                             {
@@ -128,11 +149,17 @@ namespace Timer.Views
                                         .Title("An active task is running. Select an option:")
                                         .AddChoices(
                                             "Save task and logout",
+                                            "Logout without saving",
                                             "Return to dashboard"));
 
                                 if (logoutChoice == "Save task and logout")
                                 {
                                     this._timerService.StopAndSaveTask();
+                                    return;
+                                }
+
+                                if (logoutChoice == "Logout without saving")
+                                {
                                     return;
                                 }
 
@@ -146,7 +173,8 @@ namespace Timer.Views
             finally
             {
                 this._timerService.StopDailyReminderMonitor();
-                this._timerService.OnDailyWorkReminder -= this.HandleDailyWorkReminder;
+                this._timerService.OnDailyWorkReminder -= internalReminderHandler;
+                this._timerService.OnTargetTimeReached -= targetReachedHandler;
             }
         }
 
@@ -178,17 +206,25 @@ namespace Timer.Views
 
             if (activeTask != null)
             {
+                TimeSpan currentElapsed = this._timerService.GetElapsedTime();
+                TimeSpan effectiveTarget = activeTask.TargetTime + activeTask.ExtendedTime;
+
                 string status = this._timerService.IsRunning
-                    ? "[green]Running[/]"
-                    : "[yellow]Paused[/]";
+                    ? "[green]RUNNING[/]"
+                    : "[yellow]PAUSED[/]";
 
                 AnsiConsole.MarkupLine($"Task: {Markup.Escape(activeTask.TaskName)}");
                 AnsiConsole.MarkupLine($"Status: {status}");
-                AnsiConsole.MarkupLine(
-                    $"Elapsed: {this.FormatDuration(this._timerService.GetElapsedTime())}");
+                AnsiConsole.WriteLine();
+                AnsiConsole.MarkupLine($"Elapsed time: {currentElapsed:hh\\:mm\\:ss}");
+                AnsiConsole.MarkupLine($"Target time: {activeTask.TargetTime:hh\\:mm\\:ss}");
+                AnsiConsole.MarkupLine($"Extended time: {activeTask.ExtendedTime:hh\\:mm\\:ss}");
+                AnsiConsole.MarkupLine($"Effective target: {effectiveTarget:hh\\:mm\\:ss}");
 
-                AnsiConsole.MarkupLine(
-                    $"Target: {this.FormatDuration(activeTask.TargetTime + activeTask.ExtendedTime)}");
+                if (this._timerService.IsTargetReached)
+                {
+                    AnsiConsole.MarkupLine("[bold red]Target time reached![/]");
+                }
             }
             else
             {
@@ -215,19 +251,8 @@ namespace Timer.Views
         {
             while (this._dailyReminderMessages.TryDequeue(out string? message))
             {
-                AnsiConsole.MarkupLine(
-                    $"[cyan]{Markup.Escape(message)}[/]\n");
+                AnsiConsole.MarkupLine($"[cyan]{Markup.Escape(message)}[/]\n");
             }
-        }
-
-        /// <summary>
-        /// Formats a duration into HH:mm:ss.
-        /// </summary>
-        /// <param name="duration">The duration to format.</param>
-        /// <returns>The formatted duration.</returns>
-        private string FormatDuration(TimeSpan duration)
-        {
-            return $"{(int)duration.TotalHours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
         }
     }
 }

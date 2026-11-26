@@ -140,6 +140,7 @@ namespace Timer.View
         {
             while (true)
             {
+                Console.Clear();
                 TimerScreenAction action = TimerScreenAction.None;
 
                 AnsiConsole.Live(this.BuildLiveTimerPanel(task))

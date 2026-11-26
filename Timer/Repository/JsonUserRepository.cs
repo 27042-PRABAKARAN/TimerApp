@@ -63,6 +63,26 @@ namespace Timer.Repository
         }
 
         /// <summary>
+        /// Updates an existing user record in the database structure and writes changes to the JSON file.
+        /// </summary>
+        /// <param name="user">The modified <see cref="User"/> entity to update.</param>
+        public void Update(User user)
+        {
+            if (user == null)
+            {
+                return;
+            }
+
+            int index = this._users.FindIndex(user => user.UserId == user.UserId);
+
+            if (index != -1)
+            {
+                this._users[index] = user;
+                this.Save();
+            }
+        }
+
+        /// <summary>
         /// Serializes the current list of users and writes it to the underlying JSON file.
         /// </summary>
         private void Save()
