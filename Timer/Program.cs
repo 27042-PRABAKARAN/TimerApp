@@ -3,6 +3,7 @@ using Timer.Models;
 using Timer.Repository;
 using Timer.Service;
 using Timer.Services;
+using Timer.View;
 using Timer.Views;
 
 namespace Timer
@@ -29,16 +30,20 @@ namespace Timer
             TaskHistoryServices taskHistoryService =
                 new TaskHistoryServices(taskRepository);
 
+            CsvServices csvServices = new CsvServices(taskRepository, taskHistoryService);
+
             AuthenticationView authView =
                 new AuthenticationView(authService);
 
-            CsvServices csvServices = new CsvServices(taskRepository, taskHistoryService);
-
+            AnalyticalDashboard analyticalDashboard = new AnalyticalDashboard(taskHistoryService);
+            ExportView exportView = new ExportView(csvServices);
+            ImportView importView = new ImportView(csvServices);
+            TaskView taskView = new TaskView(timerService);
             TaskHistoryView taskHistoryView =
                 new TaskHistoryView(taskHistoryService, timerService, csvServices);
 
             TimerView timerView =
-                new TimerView(timerService, taskHistoryView);
+                new TimerView(timerService, taskHistoryView, exportView, importView, analyticalDashboard, taskView);
 
             while (true)
             {
