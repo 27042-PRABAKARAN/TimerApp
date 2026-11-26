@@ -1,4 +1,6 @@
-﻿using Timer.Models;
+﻿using System.Globalization;
+using Spectre.Console;
+using Timer.Models;
 using Timer.Service;
 using Timer.Services;
 
@@ -12,151 +14,139 @@ namespace Timer.Views
         private const int MaxRecentLogs = 10;
         private readonly TaskHistoryServices _taskHistoryService;
         private readonly TimerServices _timerService;
+        private readonly CsvServices _csvServices;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="TaskHistoryView"/> class.
         /// </summary>
         /// <param name="taskHistoryService">The service used to retrieve and modify user task logs.</param>
         /// <param name="timerService">The active timer service engine used to resume tasks.</param>
-        public TaskHistoryView(TaskHistoryServices taskHistoryService, TimerServices timerService)
+        /// <param name="csvServices">The import export service.</param>
+        public TaskHistoryView(TaskHistoryServices taskHistoryService, TimerServices timerService, CsvServices csvServices)
         {
             this._taskHistoryService = taskHistoryService;
             this._timerService = timerService;
+            this._csvServices = csvServices;
         }
 
         /// <summary>
-        /// Displays the last 10 recorded task logs with interactive management prompts for editing, deleting, or resuming.
+        /// Displays the last 10 recorded task logs and provides options to edit, delete, or resume tasks.
         /// </summary>
-        /// <param name="user">The currently authenticated <see cref="User"/>.</param>
-        /// <returns><see langword="true"/> if a task was resumed and should open the live timer view; otherwise, <see langword="false"/>.</returns>
+        /// <param name="user">The currently authenticated user.</param>
+        /// <returns>True if a task was resumed; otherwise, false.</returns>
         public bool ShowLogs(User user)
         {
             while (true)
             {
-                Console.Clear();
+                AnsiConsole.Clear();
 
-                Console.WriteLine("==================== RECENT TIME LOGS (LAST 10) ====================");
-                Console.WriteLine($"User: {user.Name} ({user.Email})");
-                Console.WriteLine();
+                AnsiConsole.MarkupLine("[bold]TASK HISTORY[/]");
+                AnsiConsole.Write(new Rule());
 
-                List<TaskItem> allTasks = this._taskHistoryService.GetUserTasks(user.UserId);
+                AnsiConsole.MarkupLine(
+                    $"User: {Markup.Escape(user.Name)} ({Markup.Escape(user.Email)})");
+
+                List<TaskItem> allTasks = this._taskHistoryService
+                    .GetUserTasks(user.UserId)
+                    .OrderByDescending(t => t.StartDate)
+                    .ThenByDescending(t => t.StartTime)
+                    .ToList();
 
                 if (allTasks.Count == 0)
                 {
-                    Console.WriteLine("No task logs found yet. Start a new task from the dashboard!");
-                    Console.WriteLine("\nPress any key to return to dashboard...");
-                    Console.ReadKey();
+                    AnsiConsole.MarkupLine("\n[grey]No task logs found yet.[/]");
+                    this.WaitForUser();
                     return false;
                 }
 
-                // Slice data to grab the absolute most recent tasks
                 List<TaskItem> recentTasks = allTasks.Take(MaxRecentLogs).ToList();
 
-                Console.WriteLine(
-                    $"{"#",-4} {"Task Name",-20} {"Start Date",-12} {"End Date",-12} {"Start",-11} {"End",-11} {"Target",-10} {"Extended",-10} {"Worked",-10} {"Total",-10}");
-                Console.WriteLine(new string('-', 120));
+                this.RenderTaskTable(recentTasks, allTasks.Count);
 
-                TimeSpan recentWorked = TimeSpan.Zero;
-                TimeSpan recentSession = TimeSpan.Zero;
+                AnsiConsole.MarkupLine(
+                    "\n[grey]E: Edit Name   D: Delete Log   R: Resume Task   B: Back[/]");
 
-                for (int i = 0; i < recentTasks.Count; i++)
-                {
-                    TaskItem task = recentTasks[i];
-                    recentWorked += task.ElapsedTime;
-                    recentSession += task.TotalDuration;
+                string choice = AnsiConsole.Prompt(
+                    new TextPrompt<string>("Select an action:")
+                        .Validate(input =>
+                            new[] { "E", "D", "R", "B" }.Contains(input.Trim().ToUpperInvariant())
+                                ? ValidationResult.Success()
+                                : ValidationResult.Error("Enter E, D, R, or B.")));
 
-                    string taskName = task.TaskName.Length > 18
-                        ? task.TaskName.Substring(0, 15) + "..."
-                        : task.TaskName;
-
-                    string endDateText = task.EndDate?.ToString() ?? "In Progress";
-                    string endTimeText = task.EndTime?.ToString("hh:mm:ss tt") ?? "-";
-
-                    Console.WriteLine(
-                        $"{i + 1,-4} " +
-                        $"{taskName,-20} " +
-                        $"{task.StartDate,-12} " +
-                        $"{endDateText,-12} " +
-                        $"{task.StartTime:hh:mm:ss tt} " +
-                        $"{endTimeText,-11} " +
-                        $"{this.FormatDuration(task.TargetTime),-10} " +
-                        $"{this.FormatDuration(task.ExtendedTime),-10} " +
-                        $"{this.FormatDuration(task.ElapsedTime),-10} " +
-                        $"{this.FormatDuration(task.TotalDuration),-10}");
-                }
-
-                Console.WriteLine(new string('-', 120));
-                Console.WriteLine($"Showing              : {recentTasks.Count} of {allTasks.Count} total tasks");
-                Console.WriteLine(new string('-', 120));
-
-                Console.WriteLine("\n[E] Edit Name | [D] Delete Log | [R] Resume Task | [B] Back to Dashboard");
-                Console.Write("Select an action: ");
-                string choice = Console.ReadLine()?.ToUpper() ?? string.Empty;
+                choice = choice.Trim().ToUpperInvariant();
 
                 if (choice == "B")
                 {
                     return false;
                 }
 
-                if (choice == "E" || choice == "D" || choice == "R")
+                Console.Write($"Enter task number (1-{recentTasks.Count}): ");
+
+                if (int.TryParse(Console.ReadLine(), out int index) &&
+                    index >= 1 &&
+                    index <= recentTasks.Count)
                 {
-                    Console.Write($"Enter task # (1-{recentTasks.Count}): ");
-                    if (int.TryParse(Console.ReadLine(), out int index) && index >= 1 && index <= recentTasks.Count)
+                    TaskItem selectedTask = recentTasks[index - 1];
+
+                    switch (choice)
                     {
-                        TaskItem selectedTask = recentTasks[index - 1];
+                        case "E":
+                            this.HandleEdit(selectedTask);
+                            break;
 
-                        switch (choice)
-                        {
-                            case "E":
-                                this.HandleEdit(selectedTask);
-                                break;
+                        case "D":
+                            this.HandleDelete(selectedTask);
+                            break;
 
-                            case "D":
-                                this.HandleDelete(selectedTask);
-                                break;
+                        case "R":
+                            if (this.HandleResume(selectedTask))
+                            {
+                                return true;
+                            }
 
-                            case "R":
-                                if (this.HandleResume(selectedTask))
-                                {
-                                    return true;
-                                }
-
-                                break;
-                        }
+                            break;
                     }
-                    else
-                    {
-                        Console.WriteLine("Invalid selection. Press any key to try again...");
-                        Console.ReadKey();
-                    }
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[red]Invalid task number.[/]");
+                    this.WaitForUser();
                 }
             }
         }
 
         /// <summary>
-        /// Visual workspace engine wrapper that coordinates file generation pathways and displays delivery notifications.
+        /// Exports the user's task history to a CSV file using a record limit or date range.
         /// </summary>
-        /// <param name="user">The currently authenticated user context whose records are being targeted.</param>
+        /// <param name="user">The currently authenticated user whose records are being exported.</param>
         public void TriggerHistoryExport(User user)
         {
-            Console.Clear();
-            Console.WriteLine("==================== EXPORT HISTORY DATA ====================");
-            Console.WriteLine("Select export mode:");
-            Console.WriteLine("1. Export by most recent record limit");
-            Console.WriteLine("2. Export by completion date range");
-            Console.Write("\nEnter choice (1 or 2): ");
+            AnsiConsole.Clear();
 
-            string? choice = Console.ReadLine();
+            AnsiConsole.MarkupLine("[bold]EXPORT HISTORY DATA[/]");
+            AnsiConsole.Write(new Rule());
+
+            string choice = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Select export mode:")
+                    .AddChoices(
+                        "Export recent records",
+                        "Export by date range",
+                        "Back"));
+
             string destinationPath = string.Empty;
 
             try
             {
                 switch (choice)
                 {
-                    case "1":
-                        // --- Record Limit Pathway ---
-                        Console.Write("\nEnter number of recent records to export (or press Enter for all): ");
-                        string? input = Console.ReadLine();
+                    case "Export recent records":
+                        string input = AnsiConsole.Prompt(
+                            new TextPrompt<string>(
+                                "Enter the number of recent records (leave empty for all):")
+                                .DefaultValue(string.Empty)
+                                .AllowEmpty());
+
                         int? limit = null;
 
                         if (!string.IsNullOrWhiteSpace(input))
@@ -167,253 +157,528 @@ namespace Timer.Views
                             }
                             else
                             {
-                                Console.ForegroundColor = ConsoleColor.Yellow;
-                                Console.WriteLine("Invalid number entered. Defaulting to exporting all records...");
-                                Console.ResetColor();
+                                AnsiConsole.MarkupLine(
+                                    "[yellow]Invalid number. Exporting all records instead.[/]");
                             }
                         }
 
-                        Console.WriteLine("\nPreparing records for data compilation...");
-                        destinationPath = this._taskHistoryService.ExportTasksToCsv(user.UserId, user.Name, limit);
+                        destinationPath = this._csvServices.ExportTasksToCsv(
+                            user.UserId,
+                            user.Name,
+                            limit);
+
                         break;
 
-                    case "2":
-                        // --- Date Range Pathway ---
-                        Console.Write("\nEnter start date (yyyy-MM-dd): ");
-                        string? startInput = Console.ReadLine();
-
-                        Console.Write("Enter end date (yyyy-MM-dd): ");
-                        string? endInput = Console.ReadLine();
-
-                        if (!DateOnly.TryParse(startInput, out DateOnly startDate) || !DateOnly.TryParse(endInput, out DateOnly endDate))
+                    case "Export by date range":
+                        if (!DateOnly.TryParseExact(
+                            AnsiConsole.Ask<string>("Enter start date (yyyy-MM-dd):"),
+                            "yyyy-MM-dd",
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.None,
+                            out DateOnly startDate))
                         {
-                            Console.ForegroundColor = ConsoleColor.Red;
-                            Console.WriteLine("\n[ERROR] Invalid date format. Please use yyyy-MM-dd.");
-                            Console.ResetColor();
-                            Console.WriteLine("\nPress any key to return to dashboard...");
-                            Console.ReadKey();
+                            AnsiConsole.MarkupLine("[red]Invalid start date.[/]");
+                            this.WaitForUser();
+                            return;
+                        }
+
+                        if (!DateOnly.TryParseExact(
+                            AnsiConsole.Ask<string>("Enter end date (yyyy-MM-dd):"),
+                            "yyyy-MM-dd",
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.None,
+                            out DateOnly endDate))
+                        {
+                            AnsiConsole.MarkupLine("[red]Invalid end date.[/]");
+                            this.WaitForUser();
                             return;
                         }
 
                         if (startDate > endDate)
                         {
-                            Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine("\n[WARNING] Start date cannot be after end date.");
-                            Console.ResetColor();
-                            Console.WriteLine("\nPress any key to return to dashboard...");
-                            Console.ReadKey();
+                            AnsiConsole.MarkupLine(
+                                "[yellow]Start date cannot be after end date.[/]");
+
+                            this.WaitForUser();
                             return;
                         }
 
-                        Console.WriteLine("\nFiltering and preparing records for data compilation...");
-                        destinationPath = this._taskHistoryService.ExportTasksToCsv(user.UserId, user.Name, startDate, endDate);
+                        destinationPath = this._csvServices.ExportTasksToCsv(
+                            user.UserId,
+                            user.Name,
+                            startDate,
+                            endDate);
+
                         break;
 
-                    default:
-                        // --- Fallback Pathway ---
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine("\n[ERROR] Invalid choice. Returning to dashboard.");
-                        Console.ResetColor();
-                        Console.WriteLine("\nPress any key to return to dashboard...");
-                        Console.ReadKey();
+                    case "Back":
                         return;
                 }
 
-                // --- Success Notification Block (Shared by both valid pathways) ---
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("\n[SUCCESS] Export process finished!");
-                Console.ResetColor();
-                Console.WriteLine($"File location: {destinationPath}");
+                AnsiConsole.MarkupLine("\n[green]Export completed successfully.[/]");
+                AnsiConsole.MarkupLine(
+                    $"File location: {Markup.Escape(destinationPath)}");
             }
             catch (Exception ex)
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\n[ERROR] Failed to compile text matrix streams: {ex.Message}");
-                Console.ResetColor();
+                AnsiConsole.MarkupLine(
+                    $"[red]Export failed: {Markup.Escape(ex.Message)}[/]");
             }
 
-            Console.WriteLine("\nPress any key to return to dashboard...");
-            Console.ReadKey();
+            this.WaitForUser();
         }
 
         /// <summary>
-        /// Visual workspace engine wrapper that coordinates file ingestion pathways and displays loading feedback.
+        /// Imports task history records from a CSV file and displays the import results.
         /// </summary>
-        /// <param name="user">The currently authenticated user context under which records will be imported.</param>
+        /// <param name="user">The user under whose account the records will be imported.</param>
         public void ImportData(User user)
         {
-            Console.Clear();
-            Console.WriteLine("==================== IMPORT HISTORY DATA ====================");
-            Console.WriteLine($"Target User Context: {user.Name} ({user.Email})");
-            Console.WriteLine();
-            Console.Write("Enter the absolute file path of the CSV log to import: ");
+            AnsiConsole.Clear();
 
-            string? importPath = Console.ReadLine();
+            AnsiConsole.MarkupLine("[bold]IMPORT HISTORY DATA[/]");
+            AnsiConsole.Write(new Rule());
 
-            if (string.IsNullOrWhiteSpace(importPath))
-            {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("\n[ERROR] Path cannot be empty.");
-                Console.ResetColor();
-                Console.WriteLine("\nPress any key to return to dashboard...");
-                Console.ReadKey();
-                return;
-            }
+            AnsiConsole.MarkupLine(
+                $"Target user: {Markup.Escape(user.Name)} ({Markup.Escape(user.Email)})");
 
-            // Clean potential encapsulating quotes added by dragging and dropping files into the terminal
+            string importPath = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter the CSV file path:")
+                    .Validate(input =>
+                        !string.IsNullOrWhiteSpace(input)
+                            ? ValidationResult.Success()
+                            : ValidationResult.Error("File path cannot be empty.")));
+
             importPath = importPath.Trim('"', '\'');
 
             if (!File.Exists(importPath))
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("\n[ERROR] The specified CSV file could not be found at that location.");
-                Console.ResetColor();
-                Console.WriteLine("\nPress any key to return to dashboard...");
-                Console.ReadKey();
+                AnsiConsole.MarkupLine("[red]The specified file could not be found.[/]");
+                this.WaitForUser();
                 return;
             }
 
-            Console.WriteLine("\nReading file streams and processing data ingestion...");
+            if (!string.Equals(
+                Path.GetExtension(importPath),
+                ".csv",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                AnsiConsole.MarkupLine("[red]Please select a CSV file.[/]");
+                this.WaitForUser();
+                return;
+            }
 
             try
             {
-                // Execute the ingestion process through your updated service class
-                int importedCount = this._taskHistoryService.ImportTasksFromCsv(user.UserId, importPath);
+                TaskImportResult result = this._csvServices.ImportTasksFromCsv(
+                    user.UserId,
+                    importPath);
 
-                if (importedCount > 0)
+                AnsiConsole.MarkupLine("\n[bold]IMPORT SUMMARY[/]");
+                AnsiConsole.Write(new Rule());
+
+                var table = new Table()
+                    .Border(TableBorder.Simple)
+                    .AddColumn("Result")
+                    .AddColumn("Count");
+
+                table.AddRow(
+                    "[green]Valid / Imported[/]",
+                    result.ValidCount.ToString());
+
+                table.AddRow(
+                    "[red]Invalid[/]",
+                    result.InvalidCount.ToString());
+
+                table.AddRow(
+                    "[yellow]Duplicated / Skipped[/]",
+                    result.DuplicateCount.ToString());
+
+                AnsiConsole.Write(table);
+
+                if (result.ValidCount > 0)
                 {
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"\n[SUCCESS] Ingestion completed safely!");
-                    Console.WriteLine($"Successfully loaded and added {importedCount} tasks into your logs.");
-                    Console.ResetColor();
+                    AnsiConsole.MarkupLine(
+                        "\n[green]Import completed successfully.[/]");
                 }
                 else
                 {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine("\n[WARNING] Process finished, but 0 valid task rows were imported.");
-                    Console.WriteLine("Ensure the CSV file is structured with the appropriate header and columns.");
-                    Console.ResetColor();
+                    AnsiConsole.MarkupLine(
+                        "\n[yellow]No new valid records were imported.[/]");
                 }
             }
             catch (Exception ex)
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"\n[ERROR] Ingestion process failed: {ex.Message}");
-                Console.ResetColor();
+                AnsiConsole.MarkupLine(
+                    $"[red]Import failed: {Markup.Escape(ex.Message)}[/]");
             }
 
-            Console.WriteLine("\nPress any key to return to dashboard...");
-            Console.ReadKey();
+            this.WaitForUser();
         }
 
+        /// <summary>
+        /// Displays an analytical dashboard containing task statistics and work duration summaries.
+        /// </summary>
+        /// <param name="user">The currently authenticated user.</param>
+        public void ShowAnalyticsDashboard(User user)
+        {
+            AnsiConsole.Clear();
+
+            AnsiConsole.MarkupLine("[bold]ANALYTICAL DASHBOARD[/]");
+            AnsiConsole.Write(new Rule());
+
+            List<TaskItem> tasks = this._taskHistoryService.GetUserTasks(user.UserId);
+
+            if (tasks.Count == 0)
+            {
+                AnsiConsole.MarkupLine(
+                    "\n[grey]No task records available for analysis.[/]");
+
+                this.WaitForUser();
+                return;
+            }
+
+            DateOnly today = DateOnly.FromDateTime(DateTime.Today);
+
+            DateOnly weekStart = today.AddDays(
+                -(((int)today.DayOfWeek + 6) % 7));
+
+            DateOnly monthStart = new DateOnly(
+                today.Year,
+                today.Month,
+                1);
+
+            List<TaskItem> todayTasks = tasks
+                .Where(t => t.StartDate == today)
+                .ToList();
+
+            List<TaskItem> weekTasks = tasks
+                .Where(t => t.StartDate >= weekStart && t.StartDate <= today)
+                .ToList();
+
+            List<TaskItem> monthTasks = tasks
+                .Where(t => t.StartDate >= monthStart && t.StartDate <= today)
+                .ToList();
+
+            int completedTasks = tasks.Count(t => t.EndDate.HasValue);
+            int inProgressTasks = tasks.Count - completedTasks;
+
+            TimeSpan totalWorked = TimeSpan.FromTicks(
+                tasks.Sum(t => t.ElapsedTime.Ticks));
+
+            TimeSpan totalExtended = TimeSpan.FromTicks(
+                tasks.Sum(t => t.ExtendedTime.Ticks));
+
+            TimeSpan totalTarget = TimeSpan.FromTicks(
+                tasks.Sum(t => t.TargetTime.Ticks));
+
+            TimeSpan todayWorked = TimeSpan.FromTicks(
+                todayTasks.Sum(t => t.ElapsedTime.Ticks));
+
+            TimeSpan weekWorked = TimeSpan.FromTicks(
+                weekTasks.Sum(t => t.ElapsedTime.Ticks));
+
+            TimeSpan monthWorked = TimeSpan.FromTicks(
+                monthTasks.Sum(t => t.ElapsedTime.Ticks));
+
+            TimeSpan averageWorked = completedTasks > 0
+                ? TimeSpan.FromTicks(
+                    totalWorked.Ticks / completedTasks)
+                : TimeSpan.Zero;
+
+            TaskItem? longestTask = tasks
+                .OrderByDescending(t => t.ElapsedTime)
+                .FirstOrDefault();
+
+            double completionRate = tasks.Count > 0
+                ? (double)completedTasks / tasks.Count * 100
+                : 0;
+
+            AnsiConsole.MarkupLine(
+                $"User: [cyan]{Markup.Escape(user.Name)}[/]");
+
+            AnsiConsole.MarkupLine(
+                $"Report Date: [cyan]{today:dd-MM-yyyy}[/]\n");
+
+            AnsiConsole.MarkupLine("[bold]TASK OVERVIEW[/]");
+
+            var overviewTable = new Table()
+                .Border(TableBorder.Rounded)
+                .AddColumn("Metric")
+                .AddColumn(new TableColumn("Count").RightAligned());
+
+            overviewTable.AddRow("Total Tasks", tasks.Count.ToString());
+            overviewTable.AddRow("Completed Tasks", completedTasks.ToString());
+            overviewTable.AddRow("In Progress Tasks", inProgressTasks.ToString());
+            overviewTable.AddRow("Tasks Today", todayTasks.Count.ToString());
+            overviewTable.AddRow("Tasks This Week", weekTasks.Count.ToString());
+            overviewTable.AddRow("Tasks This Month", monthTasks.Count.ToString());
+            overviewTable.AddRow("Completion Rate", $"{completionRate:F2}%");
+
+            AnsiConsole.Write(overviewTable);
+
+            AnsiConsole.MarkupLine("\n[bold]WORK DURATION ANALYSIS[/]");
+
+            var durationTable = new Table()
+                .Border(TableBorder.Rounded)
+                .AddColumn("Metric")
+                .AddColumn(new TableColumn("Duration").RightAligned());
+
+            durationTable.AddRow(
+                "Total Time Worked",
+                this.FormatDuration(totalWorked));
+
+            durationTable.AddRow(
+                "Total Extended Time",
+                this.FormatDuration(totalExtended));
+
+            durationTable.AddRow(
+                "Total Target Time",
+                this.FormatDuration(totalTarget));
+
+            durationTable.AddRow(
+                "Average Time Per Completed Task",
+                this.FormatDuration(averageWorked));
+
+            durationTable.AddRow(
+                "Time Worked Today",
+                this.FormatDuration(todayWorked));
+
+            durationTable.AddRow(
+                "Time Worked This Week",
+                this.FormatDuration(weekWorked));
+
+            durationTable.AddRow(
+                "Time Worked This Month",
+                this.FormatDuration(monthWorked));
+
+            AnsiConsole.Write(durationTable);
+
+            AnsiConsole.MarkupLine("\n[bold]TASK PERFORMANCE[/]");
+
+            var performanceTable = new Table()
+                .Border(TableBorder.Rounded)
+                .AddColumn("Metric")
+                .AddColumn("Details");
+
+            performanceTable.AddRow(
+                "Longest Task",
+                longestTask != null ? Markup.Escape(longestTask.TaskName) : "-");
+
+            performanceTable.AddRow(
+                "Longest Task Duration",
+                longestTask != null ? this.FormatDuration(longestTask.ElapsedTime) : "00:00:00");
+
+            AnsiConsole.Write(performanceTable);
+
+            AnsiConsole.Write(new Rule());
+
+            AnsiConsole.MarkupLine(
+                "[grey]Week starts on Monday. Statistics are based on task start dates.[/]");
+
+            this.WaitForUser();
+        }
+
+        /// <summary>
+        /// Displays the task history in a formatted table with duration totals.
+        /// </summary>
+        /// <param name="recentTasks">The list of recent tasks to display.</param>
+        /// <param name="totalTaskCount">The total number of tasks available for the user.</param>
+        private void RenderTaskTable(List<TaskItem> recentTasks, int totalTaskCount)
+        {
+            var table = new Table()
+                .Border(TableBorder.Rounded)
+                .BorderColor(Color.Grey)
+                .Expand()
+                .AddColumn(new TableColumn("#").Centered())
+                .AddColumn("Task Name")
+                .AddColumn(new TableColumn("Start Date").Centered())
+                .AddColumn(new TableColumn("End Date").Centered())
+                .AddColumn(new TableColumn("Start Time").Centered())
+                .AddColumn(new TableColumn("End Time").Centered())
+                .AddColumn(new TableColumn("Target").Centered())
+                .AddColumn(new TableColumn("Extended").Centered())
+                .AddColumn(new TableColumn("Worked").Centered())
+                .AddColumn(new TableColumn("Total").Centered());
+
+            for (int i = 0; i < recentTasks.Count; i++)
+            {
+                TaskItem task = recentTasks[i];
+
+                string taskName = task.TaskName.Length > 18
+                    ? task.TaskName.Substring(0, 15) + "..."
+                    : task.TaskName;
+
+                table.AddRow(
+                    (i + 1).ToString(),
+                    Markup.Escape(taskName),
+                    task.StartDate.ToString("dd-MM-yyyy"),
+                    task.EndDate?.ToString("dd-MM-yyyy") ?? "[yellow]In Progress[/]",
+                    task.StartTime.ToString("hh:mm:ss tt"),
+                    task.EndTime?.ToString("hh:mm:ss tt") ?? "-",
+                    this.FormatDuration(task.TargetTime),
+                    this.FormatDuration(task.ExtendedTime),
+                    this.FormatDuration(task.ElapsedTime),
+                    this.FormatDuration(task.TotalDuration));
+            }
+
+            AnsiConsole.Write(table);
+
+            AnsiConsole.Write(new Rule());
+
+            AnsiConsole.MarkupLine(
+                $"Showing: {recentTasks.Count} of {totalTaskCount} total tasks");
+
+            AnsiConsole.WriteLine();
+        }
+
+        /// <summary>
+        /// Allows the user to edit the name of a selected task and saves the changes.
+        /// </summary>
+        /// <param name="task">The task whose name will be edited.</param>
         private void HandleEdit(TaskItem task)
         {
-            Console.Clear();
-            Console.WriteLine("==================== EDIT TASK NAME ====================");
-            Console.WriteLine($"Current Name: {task.TaskName}");
-            Console.Write("Enter new task name (leave blank to cancel): ");
+            AnsiConsole.Clear();
 
-            string newName = Console.ReadLine()?.Trim() ?? string.Empty;
-            if (!string.IsNullOrEmpty(newName))
+            AnsiConsole.MarkupLine("[bold]EDIT TASK NAME[/]");
+            AnsiConsole.Write(new Rule());
+
+            AnsiConsole.MarkupLine(
+                $"Current name: {Markup.Escape(task.TaskName)}");
+
+            string newName = AnsiConsole.Prompt(
+                new TextPrompt<string>("Enter the new task name (leave empty to cancel):")
+                    .DefaultValue(string.Empty)
+                    .AllowEmpty());
+
+            newName = newName.Trim();
+
+            if (!string.IsNullOrWhiteSpace(newName))
             {
                 task.TaskName = newName;
+
                 this._taskHistoryService.UpdateTask(task);
 
-                // Keep the in-memory active task name in sync if this task is currently running in the background
-                if (this._timerService.ActiveTask != null && this._timerService.ActiveTask.TaskId == task.TaskId)
+                if (this._timerService.ActiveTask != null &&
+                    this._timerService.ActiveTask.TaskId == task.TaskId)
                 {
                     this._timerService.ActiveTask.TaskName = newName;
                 }
 
-                Console.WriteLine("\nTask updated successfully! Press any key to continue...");
+                AnsiConsole.MarkupLine(
+                    "[green]Task name updated successfully.[/]");
             }
             else
             {
-                Console.WriteLine("\nNo changes made. Press any key to continue...");
+                AnsiConsole.MarkupLine("[yellow]No changes made.[/]");
             }
 
-            Console.ReadKey();
+            this.WaitForUser();
         }
 
         /// <summary>
-        /// Handles the interactive console workflow for confirming and executing a task deletion.
+        /// Confirms and deletes a selected task from the user's history.
+        /// Prevents deletion of a task that is currently active.
         /// </summary>
-        /// <param name="task">The <see cref="TaskItem"/> context to remove.</param>
+        /// <param name="task">The task to be deleted.</param>
         private void HandleDelete(TaskItem task)
         {
-            if (this._timerService.ActiveTask != null && this._timerService.ActiveTask.TaskId == task.TaskId)
+            if (this._timerService.ActiveTask != null &&
+                this._timerService.ActiveTask.TaskId == task.TaskId)
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("\n[ERROR] Cannot delete a task that is currently active in the timer. Stop and save it first.");
-                Console.ResetColor();
-                Console.WriteLine("Press any key to continue...");
-                Console.ReadKey();
+                AnsiConsole.MarkupLine(
+                    "[red]Cannot delete an active task. Stop and save it first.[/]");
+
+                this.WaitForUser();
                 return;
             }
 
-            Console.Write($"\nAre you sure you want to permanently delete '{task.TaskName}'? (Y/N): ");
-            if (Console.ReadLine()?.ToUpper() == "Y")
+            bool confirmDelete = AnsiConsole.Confirm(
+                $"Are you sure you want to delete '{Markup.Escape(task.TaskName)}'?");
+
+            if (confirmDelete)
             {
                 this._taskHistoryService.DeleteTask(task.TaskId);
-                Console.WriteLine("Task deleted successfully. Press any key to continue...");
+
+                AnsiConsole.MarkupLine(
+                    "[green]Task deleted successfully.[/]");
             }
             else
             {
-                Console.WriteLine("Deletion cancelled. Press any key to continue...");
+                AnsiConsole.MarkupLine("[yellow]Deletion cancelled.[/]");
             }
 
-            Console.ReadKey();
+            this.WaitForUser();
         }
 
         /// <summary>
-        /// Attaches the selected historical task back to the active timer tracking engine.
+        /// Resumes a selected historical task using the active timer service.
+        /// Prompts the user to save another active task before resuming.
         /// </summary>
-        /// <param name="task">The <see cref="TaskItem"/> context to load and resume tracking.</param>
-        /// <returns><see langword="true"/> if the task was resumed or opened; <see langword="false"/> if cancelled.</returns>
+        /// <param name="task">The historical task to resume.</param>
+        /// <returns>True if the task was resumed or was already active; otherwise, false.</returns>
         private bool HandleResume(TaskItem task)
         {
             if (this._timerService.ActiveTask != null)
             {
-                // If the user selected the exact task already running in the background, just jump back into its live view
                 if (this._timerService.ActiveTask.TaskId == task.TaskId)
                 {
-                    Console.WriteLine("\nThis task is already active in the background. Returning to live timer...");
-                    Console.ReadKey();
+                    AnsiConsole.MarkupLine(
+                        "[yellow]This task is already active.[/]");
+
+                    this.WaitForUser();
                     return true;
                 }
 
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.Write($"\n'{this._timerService.ActiveTask.TaskName}' is currently active! Stop & save it before resuming '{task.TaskName}'? (Y/N): ");
-                Console.ResetColor();
+                bool stopCurrentTask = AnsiConsole.Confirm(
+                    $"'{Markup.Escape(this._timerService.ActiveTask.TaskName)}' is active. Stop and save it before resuming '{Markup.Escape(task.TaskName)}'?");
 
-                if (Console.ReadKey(true).Key != ConsoleKey.Y)
+                if (!stopCurrentTask)
                 {
-                    Console.WriteLine("\nResume cancelled. Press any key to continue...");
-                    Console.ReadKey();
+                    AnsiConsole.MarkupLine("[yellow]Resume cancelled.[/]");
+                    this.WaitForUser();
                     return false;
                 }
 
                 this._timerService.StopAndSaveTask();
             }
 
-            Console.Clear();
-            Console.WriteLine("==================== RESUMING HISTORICAL TASK ====================");
-            Console.WriteLine($"Resuming tracking context for: '{task.TaskName}'");
-            Console.WriteLine($"Previously Logged Time   : {this.FormatDuration(task.ElapsedTime)}");
-            Console.WriteLine("\nLoading stopwatch core engine... tracking resumed.");
+            AnsiConsole.Clear();
+
+            AnsiConsole.MarkupLine("[bold]RESUMING HISTORICAL TASK[/]");
+            AnsiConsole.Write(new Rule());
+
+            AnsiConsole.MarkupLine(
+                $"Task: {Markup.Escape(task.TaskName)}");
+
+            AnsiConsole.MarkupLine(
+                $"Previously logged time: {this.FormatDuration(task.ElapsedTime)}");
 
             this._timerService.ResumeExistingTask(task);
 
-            Console.WriteLine("\nResumed successfully! Press any key to open the live timer...");
-            Console.ReadKey();
+            AnsiConsole.MarkupLine(
+                "\n[green]Task resumed successfully.[/]");
+
+            this.WaitForUser();
             return true;
         }
 
         /// <summary>
-        /// Formats a <see cref="TimeSpan"/> into a standard <c>HH:mm:ss</c> display string.
+        /// Waits for the user to press a key before continuing.
+        /// </summary>
+        private void WaitForUser()
+        {
+            AnsiConsole.MarkupLine(
+                "\n[grey]Press any key to continue...[/]");
+
+            Console.ReadKey(true);
+        }
+
+        /// <summary>
+        /// Formats a <see cref="TimeSpan"/> into a standard HH:mm:ss display string.
         /// </summary>
         /// <param name="duration">The duration to format.</param>
-        /// <returns>A formatted <c>HH:mm:ss</c> string.</returns>
+        /// <returns>The formatted duration string.</returns>
         private string FormatDuration(TimeSpan duration)
         {
             return $"{(int)duration.TotalHours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";

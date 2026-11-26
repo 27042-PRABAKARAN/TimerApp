@@ -32,8 +32,10 @@ namespace Timer
             AuthenticationView authView =
                 new AuthenticationView(authService);
 
+            CsvServices csvServices = new CsvServices(taskRepository, taskHistoryService);
+
             TaskHistoryView taskHistoryView =
-                new TaskHistoryView(taskHistoryService, timerService);
+                new TaskHistoryView(taskHistoryService, timerService, csvServices);
 
             TimerView timerView =
                 new TimerView(timerService, taskHistoryView);

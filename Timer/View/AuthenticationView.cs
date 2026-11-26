@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using Spectre.Console;
 using Timer.Models;
 using Timer.Services;
 
@@ -14,8 +15,7 @@ namespace Timer.Views
         /// <summary>
         /// Initializes a new instance of the <see cref="AuthenticationView"/> class.
         /// </summary>
-        /// <param name="authService">The service used to han00
-        /// dle user authentication and registration.</param>
+        /// <param name="authService">The service used to handle user authentication and registration.</param>
         public AuthenticationView(AuthenticationServices authService)
         {
             this._authService = authService;
@@ -24,28 +24,27 @@ namespace Timer.Views
         /// <summary>
         /// Displays the main authentication menu and processes user choices for logging in, signing up, or exiting.
         /// </summary>
-        /// <returns>The authenticated <see cref="User"/> if login succeeds; otherwise, <see langword="null"/> if the user chooses to exit.</returns>
+        /// <returns>The authenticated <see cref="User"/> if login succeeds; otherwise, null if the user chooses to exit.</returns>
         public User? ShowLoginPage()
         {
             while (true)
             {
-                Console.Clear();
+                AnsiConsole.Clear();
 
-                Console.WriteLine("========== TASK TIMER ==========");
-                Console.WriteLine("           LOGIN PAGE");
-                Console.WriteLine();
-                Console.WriteLine("1. Login");
-                Console.WriteLine("2. Sign Up");
-                Console.WriteLine("3. Exit");
-                Console.WriteLine();
+                AnsiConsole.MarkupLine("[bold]TASK TIMER[/]");
+                AnsiConsole.Write(new Spectre.Console.Rule());
+                AnsiConsole.MarkupLine("[bold]LOGIN PAGE[/]\n");
 
-                Console.Write("Enter choice: ");
-                string choice = Console.ReadLine() ?? string.Empty;
+                string choice = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("Select an option:")
+                        .AddChoices("Login", "Sign Up", "Exit"));
 
                 switch (choice)
                 {
-                    case "1":
+                    case "Login":
                         User? user = this.Login();
+
                         if (user != null)
                         {
                             return user;
@@ -53,87 +52,167 @@ namespace Timer.Views
 
                         break;
 
-                    case "2":
+                    case "Sign Up":
                         this.SignUp();
                         break;
 
-                    case "3":
+                    case "Exit":
                         return null;
-
-                    default:
-                        Console.WriteLine("Invalid choice.");
-                        Console.ReadKey();
-                        break;
                 }
             }
         }
 
+        /// <summary>
+        /// Prompts the user for login credentials and authenticates the account.
+        /// </summary>
+        /// <returns>The authenticated user if the credentials are valid; otherwise, null.</returns>
         private User? Login()
         {
-            Console.Clear();
+            AnsiConsole.Clear();
 
-            Console.WriteLine("========== LOGIN ==========");
+            AnsiConsole.MarkupLine("[bold]LOGIN[/]");
+            AnsiConsole.Write(new Spectre.Console.Rule());
 
-            Console.Write("Email: ");
-            string email = Console.ReadLine() ?? string.Empty;
+            string email = AnsiConsole.Ask<string>("Email:");
 
-            Console.Write("Password (Press Tab to show/hide): ");
+            AnsiConsole.MarkupLine(
+                "[grey]Press Tab while entering the password to show or hide it.[/]");
+
+            AnsiConsole.MarkupLine("Password:");
             string password = this.ReadMaskedPassword();
 
             User? user = this._authService.Login(email, password);
 
             if (user == null)
             {
-                Console.WriteLine("\nInvalid email or password.");
-                Console.ReadKey();
+                AnsiConsole.MarkupLine("\n[red]Invalid email or password.[/]");
+                this.WaitForUser();
                 return null;
             }
 
-            Console.WriteLine("\nLogin successful!");
-            Console.ReadKey();
+            AnsiConsole.MarkupLine("\n[green]Login successful.[/]");
 
             return user;
         }
 
         /// <summary>
         /// Prompts the user for registration details and attempts to create a new account.
+        /// Each field allows a maximum of three attempts.
         /// </summary>
         private void SignUp()
         {
-            Console.Clear();
+            AnsiConsole.Clear();
 
-            Console.WriteLine("========== SIGN UP ==========");
-            Console.WriteLine("Password rules: 8+ chars, uppercase, lowercase, number, and symbol (no spaces).");
-            Console.WriteLine("Tip: Press [Tab] while typing a password to show or hide it.");
-            Console.WriteLine();
+            AnsiConsole.MarkupLine("[bold]SIGN UP[/]");
+            AnsiConsole.Write(new Spectre.Console.Rule());
 
-            Console.Write("Name: ");
-            string name = Console.ReadLine() ?? string.Empty;
+            string name = string.Empty;
+            bool validName = false;
 
-            Console.Write("Email: ");
-            string email = Console.ReadLine() ?? string.Empty;
-
-            Console.Write("Password: ");
-            string password = this.ReadMaskedPassword();
-
-            Console.Write("Confirm Password: ");
-            string confirmPassword = this.ReadMaskedPassword();
-
-            // Check if passwords match before moving forward
-            if (password != confirmPassword)
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
-                Console.WriteLine("\nPasswords do not match. Please try again.");
-                Console.WriteLine("Press any key to continue...");
-                Console.ReadKey();
+                name = AnsiConsole.Ask<string>("Name:").Trim();
+
+                if (!string.IsNullOrWhiteSpace(name) &&
+                    name.All(c => char.IsLetter(c) || c == ' '))
+                {
+                    validName = true;
+                    break;
+                }
+
+                AnsiConsole.MarkupLine(
+                    $"[red]Invalid name. Use only letters and spaces. Attempts left: {3 - attempt}[/]");
+            }
+
+            if (!validName)
+            {
+                AnsiConsole.MarkupLine("\n[red]Maximum attempts reached. Registration cancelled.[/]");
+                this.WaitForUser();
                 return;
             }
 
-            Console.WriteLine("\nDaily Work Start Time:");
+            string email = string.Empty;
+            bool validEmail = false;
+
+            AnsiConsole.MarkupLine(
+                "[grey]Example: john@gmail.com[/]");
+
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                email = AnsiConsole.Ask<string>("Email:").Trim();
+
+                if (System.Net.Mail.MailAddress.TryCreate(email, out var address) &&
+                    address.Address == email)
+                {
+                    validEmail = true;
+                    break;
+                }
+
+                AnsiConsole.MarkupLine(
+                    $"[red]Invalid email. Enter a valid email address (e.g., john@gmail.com). Attempts left: {3 - attempt}[/]");
+            }
+
+            if (!validEmail)
+            {
+                AnsiConsole.MarkupLine("\n[red]Maximum attempts reached. Registration cancelled.[/]");
+                this.WaitForUser();
+                return;
+            }
+
+            AnsiConsole.MarkupLine("\n[bold]PASSWORD REQUIREMENTS[/]");
+            AnsiConsole.MarkupLine("[grey]• Minimum 8 characters[/]");
+            AnsiConsole.MarkupLine("[grey]• At least one uppercase letter[/]");
+            AnsiConsole.MarkupLine("[grey]• At least one lowercase letter[/]");
+            AnsiConsole.MarkupLine("[grey]• At least one number[/]");
+            AnsiConsole.MarkupLine("[grey]• At least one special character[/]");
+            AnsiConsole.MarkupLine("[grey]• No spaces allowed[/]");
+            AnsiConsole.MarkupLine("[grey]Example: Timer@123[/]");
+            AnsiConsole.MarkupLine(
+                "\n[yellow]Tip: Press TAB while entering your password to show or hide it.[/]");
+
+            string password = string.Empty;
+            bool validPassword = false;
+
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                AnsiConsole.MarkupLine("\nPassword:");
+                password = this.ReadMaskedPassword();
+
+                if (this.IsValidPassword(password))
+                {
+                    validPassword = true;
+                    break;
+                }
+
+                AnsiConsole.MarkupLine(
+                    $"[red]Password does not meet the requirements. Attempts left: {3 - attempt}[/]");
+            }
+
+            if (!validPassword)
+            {
+                AnsiConsole.MarkupLine("\n[red]Maximum attempts reached. Registration cancelled.[/]");
+                this.WaitForUser();
+                return;
+            }
+
+            AnsiConsole.MarkupLine("\nConfirm Password:");
+            string confirmPassword = this.ReadMaskedPassword();
+
+            if (password != confirmPassword)
+            {
+                AnsiConsole.MarkupLine("\n[red]Passwords do not match. Please try again.[/]");
+                this.WaitForUser();
+                return;
+            }
+
+            AnsiConsole.MarkupLine("\n[bold]DAILY WORK START TIME[/]");
+
             if (!this.TryReadStartTime(out TimeOnly dayStartTime))
             {
-                Console.WriteLine("\nInvalid time entered. Please use Hour (1-12), Minute (0-59), and AM/PM.");
-                Console.WriteLine("Press any key to continue...");
-                Console.ReadKey();
+                AnsiConsole.MarkupLine(
+                    "\n[red]Invalid time. Use an hour between 1 and 12, a minute between 0 and 59, and AM or PM.[/]");
+
+                this.WaitForUser();
                 return;
             }
 
@@ -144,56 +223,82 @@ namespace Timer.Views
                 dayStartTime,
                 out string message);
 
-            Console.WriteLine("\n" + message);
+            if (success)
+            {
+                AnsiConsole.MarkupLine($"\n[green]{Markup.Escape(message)}[/]");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine($"\n[red]{Markup.Escape(message)}[/]");
+            }
 
-            Console.WriteLine("Press any key to continue...");
-            Console.ReadKey();
+            this.WaitForUser();
         }
 
         /// <summary>
-        /// Prompts the user for 12-hour clock components (hour, minute, and AM/PM) and converts them into a <see cref="TimeOnly"/> value.
+        /// Checks whether the password meets the required security rules.
         /// </summary>
-        /// <param name="startTime">When this method returns, contains the parsed <see cref="TimeOnly"/> value if valid.</param>
-        /// <returns><see langword="true"/> if all inputs are valid; otherwise, <see langword="false"/>.</returns>
+        /// <param name="password">The password entered by the user.</param>
+        /// <returns>True if the password is valid; otherwise, false.</returns>
+        private bool IsValidPassword(string password)
+        {
+            return password.Length >= 8 &&
+                   !password.Any(char.IsWhiteSpace) &&
+                   password.Any(char.IsUpper) &&
+                   password.Any(char.IsLower) &&
+                   password.Any(char.IsDigit) &&
+                   password.Any(c => !char.IsLetterOrDigit(c));
+        }
+
+        /// <summary>
+        /// Prompts the user for 12-hour clock components and converts them into a <see cref="TimeOnly"/> value.
+        /// </summary>
+        /// <param name="startTime">When this method returns, contains the parsed time if the inputs are valid.</param>
+        /// <returns>True if all inputs are valid; otherwise, false.</returns>
         private bool TryReadStartTime(out TimeOnly startTime)
         {
             startTime = default;
 
-            Console.Write("  Hour (1-12)   : ");
-            if (!int.TryParse(Console.ReadLine(), out int hour) || hour < 1 || hour > 12)
+            string hourInput = AnsiConsole.Prompt(
+                new TextPrompt<string>("Hour (1-12):"));
+
+            if (!int.TryParse(hourInput, out int hour) || hour < 1 || hour > 12)
             {
                 return false;
             }
 
-            Console.Write("  Minute (0-59) : ");
-            string minuteInput = Console.ReadLine() ?? string.Empty;
+            string minuteInput = AnsiConsole.Prompt(
+                new TextPrompt<string>("Minute (0-59):")
+                    .DefaultValue("0")
+                    .AllowEmpty());
+
             int minute = 0;
+
             if (!string.IsNullOrWhiteSpace(minuteInput) &&
                 (!int.TryParse(minuteInput, out minute) || minute < 0 || minute > 59))
             {
                 return false;
             }
 
-            Console.Write("  AM or PM      : ");
-            string period = (Console.ReadLine() ?? string.Empty).Trim().ToUpperInvariant();
-
-            if (period != "AM" && period != "PM")
-            {
-                return false;
-            }
+            string period = AnsiConsole.Prompt(
+                new SelectionPrompt<string>()
+                    .Title("Select AM or PM:")
+                    .AddChoices("AM", "PM"));
 
             int hour24 = hour % 12;
+
             if (period == "PM")
             {
                 hour24 += 12;
             }
 
             startTime = new TimeOnly(hour24, minute);
+
             return true;
         }
 
         /// <summary>
-        /// Reads password input from the console, allowing the user to toggle visibility using the Tab key.
+        /// Reads password input from the console and allows the user to toggle visibility using the Tab key.
         /// </summary>
         /// <returns>The plain-text password entered by the user.</returns>
         private string ReadMaskedPassword()
@@ -219,7 +324,10 @@ namespace Timer.Views
                         Console.Write("\b \b");
                     }
 
-                    Console.Write(isMasked ? new string('*', password.Length) : password.ToString());
+                    Console.Write(
+                        isMasked
+                            ? new string('*', password.Length)
+                            : password.ToString());
                 }
                 else if (keyInfo.Key == ConsoleKey.Backspace)
                 {
@@ -237,6 +345,15 @@ namespace Timer.Views
             }
 
             return password.ToString();
+        }
+
+        /// <summary>
+        /// Waits for the user to press a key before continuing.
+        /// </summary>
+        private void WaitForUser()
+        {
+            AnsiConsole.MarkupLine("\n[grey]Press any key to continue...[/]");
+            Console.ReadKey(true);
         }
     }
 }
