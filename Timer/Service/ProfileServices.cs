@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+﻿using Timer.Helpers;
 using Timer.Interfaces;
 using Timer.Models;
 
@@ -9,11 +9,6 @@ namespace Timer.Service
     /// </summary>
     public class ProfileServices
     {
-        private const int MinPasswordLength = 8;
-        private const int SaltSize = 16;       // 128 bits
-        private const int KeySize = 32;        // 256 bits
-        private const int Iterations = 100_000;
-        private static readonly HashAlgorithmName Algorithm = HashAlgorithmName.SHA256;
         private readonly IUserRepository _userRepository;
 
         /// <summary>
@@ -88,44 +83,7 @@ namespace Timer.Service
         /// <returns><see langword="true"/> if the password meets all strength rules; otherwise, <see langword="false"/>.</returns>
         private bool ValidatePassword(string password, out string errorMessage)
         {
-            if (string.IsNullOrEmpty(password) || password.Length < MinPasswordLength)
-            {
-                errorMessage = $"Password must contain at least {MinPasswordLength} characters.";
-                return false;
-            }
-
-            if (password.Any(char.IsWhiteSpace))
-            {
-                errorMessage = "Password cannot contain spaces.";
-                return false;
-            }
-
-            if (!password.Any(char.IsUpper))
-            {
-                errorMessage = "Password must contain at least one uppercase letter (A-Z).";
-                return false;
-            }
-
-            if (!password.Any(char.IsLower))
-            {
-                errorMessage = "Password must contain at least one lowercase letter (a-z).";
-                return false;
-            }
-
-            if (!password.Any(char.IsDigit))
-            {
-                errorMessage = "Password must contain at least one number (0-9).";
-                return false;
-            }
-
-            if (password.All(char.IsLetterOrDigit))
-            {
-                errorMessage = "Password must contain at least one special character (e.g., !@#$%^&*).";
-                return false;
-            }
-
-            errorMessage = string.Empty;
-            return true;
+            return PasswordHelper.Validate(password, out errorMessage);
         }
 
         /// <summary>
@@ -135,15 +93,7 @@ namespace Timer.Service
         /// <returns>A Base64-encoded salt and hash separated by a period.</returns>
         private string HashPassword(string password)
         {
-            byte[] salt = RandomNumberGenerator.GetBytes(SaltSize);
-            byte[] hash = Rfc2898DeriveBytes.Pbkdf2(
-                password,
-                salt,
-                Iterations,
-                Algorithm,
-                KeySize);
-
-            return $"{Convert.ToBase64String(salt)}.{Convert.ToBase64String(hash)}";
+            return PasswordHelper.Hash(password);
         }
     }
 }

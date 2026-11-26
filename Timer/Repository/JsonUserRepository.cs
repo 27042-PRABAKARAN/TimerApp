@@ -10,6 +10,7 @@ namespace Timer.Repository
     public class JsonUserRepository : IUserRepository
     {
         private readonly string _filePath;
+        private readonly object _syncRoot = new object();
         private List<User> _users;
 
         /// <summary>
@@ -73,12 +74,15 @@ namespace Timer.Repository
                 return;
             }
 
-            int index = this._users.FindIndex(user => user.UserId == user.UserId);
-
-            if (index != -1)
+            lock (this._syncRoot)
             {
-                this._users[index] = user;
-                this.Save();
+                int index = this._users.FindIndex(existingUser => existingUser.UserId == user.UserId);
+
+                if (index != -1)
+                {
+                    this._users[index] = user;
+                    this.Save();
+                }
             }
         }
 

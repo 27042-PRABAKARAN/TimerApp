@@ -1,5 +1,5 @@
-﻿using System.Collections.Concurrent;
-using Spectre.Console;
+﻿using Spectre.Console;
+using Timer.Helpers;
 using Timer.Models;
 using Timer.Services;
 using Timer.View;
@@ -17,7 +17,6 @@ namespace Timer.Views
         private readonly ImportView _importView;
         private readonly TaskView _taskView;
         private readonly AnalyticalDashboard _analyticalDashboard;
-        private readonly ConcurrentQueue<string> _dailyReminderMessages = new ConcurrentQueue<string>();
         private readonly ProfileView _profileView;
 
         /// <summary>
@@ -48,27 +47,27 @@ namespace Timer.Views
         public void ShowDashboard(User user)
         {
             // Define the target reached event inline to print right below the menu layout cleanly without scrambling formatting
-            TargetTimeReachedHandler targetReachedHandler = (task) =>
+            TargetTimeReachedHandler targetReachedHandler = task =>
             {
-                AnsiConsole.WriteLine();
-                AnsiConsole.MarkupLine("[bold red]Target time reached![/]");
+                NotificationHelper.Queue("target", $"Target reached: {task.TaskName}");
+                NotificationHelper.Display();
             };
 
             // Using closure to ensure background reminder checks use the exact, mutated reference loop object
-            DailyWorkReminderHandler internalReminderHandler = (monitoredUser) => this.HandleDailyWorkReminder(monitoredUser);
+            DailyWorkReminderHandler internalReminderHandler = monitoredUser => this.HandleDailyWorkReminder(monitoredUser);
 
             this._timerService.OnDailyWorkReminder += internalReminderHandler;
             this._timerService.OnTargetTimeReached += targetReachedHandler;
             this._timerService.StartDailyReminderMonitor(user);
+            this._timerService.StartTargetTimeMonitor();
 
             try
             {
                 while (true)
                 {
                     AnsiConsole.Clear();
+                    NotificationHelper.Display();
 
-                    // Reminders and RenderDashboard now read directly from the modified 'user' object instance
-                    this.DisplayDailyReminders();
                     this.RenderDashboard(user);
 
                     List<string> choices = new List<string>
@@ -173,6 +172,7 @@ namespace Timer.Views
             finally
             {
                 this._timerService.StopDailyReminderMonitor();
+                this._timerService.StopTargetTimeMonitor();
                 this._timerService.OnDailyWorkReminder -= internalReminderHandler;
                 this._timerService.OnTargetTimeReached -= targetReachedHandler;
             }
@@ -216,10 +216,6 @@ namespace Timer.Views
                 AnsiConsole.MarkupLine($"Task: {Markup.Escape(activeTask.TaskName)}");
                 AnsiConsole.MarkupLine($"Status: {status}");
                 AnsiConsole.WriteLine();
-                AnsiConsole.MarkupLine($"Elapsed time: {currentElapsed:hh\\:mm\\:ss}");
-                AnsiConsole.MarkupLine($"Target time: {activeTask.TargetTime:hh\\:mm\\:ss}");
-                AnsiConsole.MarkupLine($"Extended time: {activeTask.ExtendedTime:hh\\:mm\\:ss}");
-                AnsiConsole.MarkupLine($"Effective target: {effectiveTarget:hh\\:mm\\:ss}");
 
                 if (this._timerService.IsTargetReached)
                 {
@@ -240,19 +236,10 @@ namespace Timer.Views
         /// <param name="user">The user receiving the reminder.</param>
         private void HandleDailyWorkReminder(User user)
         {
-            this._dailyReminderMessages.Enqueue(
+            NotificationHelper.Queue(
+                "daily",
                 $"Good day, {user.Name}! It is your scheduled work start time ({user.DayStartTime:hh:mm tt}).");
-        }
-
-        /// <summary>
-        /// Displays pending daily work reminder messages.
-        /// </summary>
-        private void DisplayDailyReminders()
-        {
-            while (this._dailyReminderMessages.TryDequeue(out string? message))
-            {
-                AnsiConsole.MarkupLine($"[cyan]{Markup.Escape(message)}[/]\n");
-            }
+            NotificationHelper.Display();
         }
     }
 }

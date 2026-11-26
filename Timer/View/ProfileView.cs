@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using Spectre.Console;
+using Timer.Helpers;
 using Timer.Models;
 using Timer.Service;
 
@@ -30,6 +31,7 @@ namespace Timer.View
             while (true)
             {
                 AnsiConsole.Clear();
+                NotificationHelper.Display();
 
                 AnsiConsole.MarkupLine("[bold cyan]=== My Profile ===[/]");
                 AnsiConsole.MarkupLine($"[grey]User ID:[/] {currentUser.UserId}");
@@ -67,14 +69,21 @@ namespace Timer.View
             AnsiConsole.WriteLine();
             AnsiConsole.MarkupLine("[yellow]--- Edit Profile ---[/]");
 
-            string newName = AnsiConsole.Prompt(
-                new TextPrompt<string>("Enter your name:")
-                    .DefaultValue(currentUser.Name));
+            if (!InputHelper.TryPromptText("Enter your name:", input => !string.IsNullOrWhiteSpace(input), "Name cannot be empty.", out string newName))
+            {
+                return;
+            }
 
-            TimeOnly newStartTime = AnsiConsole.Prompt(
-                new TextPrompt<TimeOnly>("Enter start time (e.g., 09:00 AM):")
-                    .DefaultValue(currentUser.DayStartTime)
-                    .ValidationErrorMessage("[red]Invalid time format.[/]"));
+            if (!InputHelper.TryPromptText(
+                "Enter start time (e.g., 09:00 AM):",
+                input => TimeOnly.TryParse(input, out _),
+                "Enter a valid time.",
+                out string startTimeInput))
+            {
+                return;
+            }
+
+            TimeOnly newStartTime = TimeOnly.Parse(startTimeInput);
 
             var updatedData = new User
             {

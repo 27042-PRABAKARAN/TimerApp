@@ -1,4 +1,5 @@
-﻿using Spectre.Console;
+using Spectre.Console;
+using Timer.Helpers;
 using Timer.Models;
 using Timer.Service;
 using Timer.Services;
@@ -38,6 +39,7 @@ namespace Timer.Views
             while (true)
             {
                 AnsiConsole.Clear();
+                NotificationHelper.Display();
 
                 AnsiConsole.MarkupLine("[bold]TASK HISTORY[/]");
                 AnsiConsole.Write(new Rule());
@@ -80,12 +82,16 @@ namespace Timer.Views
                     return false;
                 }
 
-                int index = AnsiConsole.Prompt(
-                    new TextPrompt<int>($"Enter task number (1-{recentTasks.Count}):")
-                        .Validate(num =>
-                            num >= 1 && num <= recentTasks.Count
-                                ? ValidationResult.Success()
-                                : ValidationResult.Error($"[red]Please enter a number between 1 and {recentTasks.Count}.[/]")));
+                if (!InputHelper.TryPromptText(
+                    $"Enter task number (1-{recentTasks.Count}):",
+                    input => int.TryParse(input, out int number) && number >= 1 && number <= recentTasks.Count,
+                    $"Enter a number between 1 and {recentTasks.Count}.",
+                    out string selectedIndex))
+                {
+                    return false;
+                }
+
+                int index = int.Parse(selectedIndex);
 
                 TaskItem selectedTask = recentTasks[index - 1];
 
@@ -170,6 +176,7 @@ namespace Timer.Views
         private void HandleEdit(TaskItem task)
         {
             AnsiConsole.Clear();
+            NotificationHelper.Display();
 
             AnsiConsole.MarkupLine("[bold]EDIT TASK NAME[/]");
             AnsiConsole.Write(new Rule());
@@ -275,6 +282,7 @@ namespace Timer.Views
             }
 
             AnsiConsole.Clear();
+            NotificationHelper.Display();
 
             AnsiConsole.MarkupLine("[bold]RESUMING HISTORICAL TASK[/]");
             AnsiConsole.Write(new Rule());
@@ -312,7 +320,7 @@ namespace Timer.Views
         /// <returns>The formatted duration string.</returns>
         private string FormatDuration(TimeSpan duration)
         {
-            return $"{(int)duration.TotalHours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
+            return DurationHelper.Format(duration);
         }
     }
 }

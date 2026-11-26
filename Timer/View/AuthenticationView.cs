@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using Spectre.Console;
+using Timer.Helpers;
 using Timer.Models;
 using Timer.Services;
 
@@ -30,6 +31,7 @@ namespace Timer.Views
             while (true)
             {
                 AnsiConsole.Clear();
+                NotificationHelper.Display();
 
                 AnsiConsole.MarkupLine("[bold]TASK TIMER[/]");
                 AnsiConsole.Write(new Spectre.Console.Rule());
@@ -69,6 +71,7 @@ namespace Timer.Views
         private User? Login()
         {
             AnsiConsole.Clear();
+            NotificationHelper.Display();
 
             AnsiConsole.MarkupLine("[bold]LOGIN[/]");
             AnsiConsole.Write(new Spectre.Console.Rule());
@@ -91,6 +94,8 @@ namespace Timer.Views
             }
 
             AnsiConsole.MarkupLine("\n[green]Login successful.[/]");
+            NotificationHelper.Queue("login", $"Welcome, {user.Name}!");
+            NotificationHelper.Display();
 
             return user;
         }
@@ -102,6 +107,7 @@ namespace Timer.Views
         private void SignUp()
         {
             AnsiConsole.Clear();
+            NotificationHelper.Display();
 
             AnsiConsole.MarkupLine("[bold]SIGN UP[/]");
             AnsiConsole.Write(new Spectre.Console.Rule());

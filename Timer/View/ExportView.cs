@@ -1,5 +1,6 @@
-﻿using System.Globalization;
+using System.Globalization;
 using Spectre.Console;
+using Timer.Helpers;
 using Timer.Models;
 using Timer.Service;
 
@@ -28,6 +29,7 @@ namespace Timer.View
         public void TriggerHistoryExport(User user)
         {
             AnsiConsole.Clear();
+            NotificationHelper.Display();
 
             AnsiConsole.MarkupLine("[bold]EXPORT HISTORY DATA[/]");
             AnsiConsole.Write(new Rule());

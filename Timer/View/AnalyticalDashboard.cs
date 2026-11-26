@@ -1,4 +1,5 @@
-﻿using Spectre.Console;
+using Spectre.Console;
+using Timer.Helpers;
 using Timer.Models;
 using Timer.Service;
 
@@ -27,6 +28,7 @@ namespace Timer.View
         public void ShowAnalyticsDashboard(User user)
         {
             AnsiConsole.Clear();
+            NotificationHelper.Display();
 
             AnsiConsole.MarkupLine("[bold cyan]ANALYTICAL DASHBOARD[/]");
             AnsiConsole.Write(new Rule());
@@ -146,7 +148,7 @@ namespace Timer.View
         /// <returns>The formatted duration string.</returns>
         private string FormatDuration(TimeSpan duration)
         {
-            return $"{(int)duration.TotalHours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
+            return DurationHelper.Format(duration);
         }
     }
 }

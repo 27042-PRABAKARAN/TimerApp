@@ -1,4 +1,5 @@
-﻿using Spectre.Console;
+using Spectre.Console;
+using Timer.Helpers;
 using Timer.Models;
 using Timer.Services;
 
@@ -30,16 +31,15 @@ namespace Timer.View
             while (true)
             {
                 AnsiConsole.Clear();
+                NotificationHelper.Display();
 
                 AnsiConsole.MarkupLine("[bold]CREATE NEW TASK[/]");
                 AnsiConsole.Write(new Rule());
 
-                string taskName = AnsiConsole.Prompt(
-                    new TextPrompt<string>("Enter task name:")
-                        .Validate(input =>
-                            !string.IsNullOrWhiteSpace(input)
-                                ? ValidationResult.Success()
-                                : ValidationResult.Error("Task name cannot be empty.")));
+                if (!InputHelper.TryPromptText("Enter task name:", input => !string.IsNullOrWhiteSpace(input), "Task name cannot be empty.", out string taskName))
+                {
+                    return;
+                }
 
                 AnsiConsole.MarkupLine(
                     "\n[grey]Enter the target duration. Press Enter to use 0.[/]\n");
@@ -258,6 +258,7 @@ namespace Timer.View
         private void RenderCompletedTask(TaskItem? task)
         {
             AnsiConsole.Clear();
+            NotificationHelper.Display();
 
             if (task == null)
             {
@@ -300,6 +301,7 @@ namespace Timer.View
             try
             {
                 AnsiConsole.Clear();
+                NotificationHelper.Display();
 
                 AnsiConsole.MarkupLine("[bold]EXTEND TARGET TIME[/]");
                 AnsiConsole.Write(new Rule());
@@ -380,7 +382,7 @@ namespace Timer.View
         /// <returns>The formatted duration.</returns>
         private string FormatDuration(TimeSpan duration)
         {
-            return $"{(int)duration.TotalHours:D2}:{duration.Minutes:D2}:{duration.Seconds:D2}";
+            return DurationHelper.Format(duration);
         }
     }
 }

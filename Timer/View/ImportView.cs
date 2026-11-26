@@ -1,4 +1,5 @@
-﻿using Spectre.Console;
+using Spectre.Console;
+using Timer.Helpers;
 using Timer.Models;
 using Timer.Service;
 
@@ -27,6 +28,7 @@ namespace Timer.View
         public void ImportData(User user)
         {
             AnsiConsole.Clear();
+            NotificationHelper.Display();
 
             AnsiConsole.MarkupLine("[bold]IMPORT HISTORY DATA[/]");
             AnsiConsole.Write(new Rule());
@@ -34,12 +36,10 @@ namespace Timer.View
             AnsiConsole.MarkupLine(
                 $"Target user: {Markup.Escape(user.Name)} ({Markup.Escape(user.Email)})");
 
-            string importPath = AnsiConsole.Prompt(
-                new TextPrompt<string>("Enter the CSV file path:")
-                    .Validate(input =>
-                        !string.IsNullOrWhiteSpace(input)
-                            ? ValidationResult.Success()
-                            : ValidationResult.Error("File path cannot be empty.")));
+            if (!InputHelper.TryPromptText("Enter the CSV file path:", input => !string.IsNullOrWhiteSpace(input), "File path cannot be empty.", out string importPath))
+            {
+                return;
+            }
 
             importPath = importPath.Trim('"', '\'');
 
